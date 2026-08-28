@@ -1,0 +1,10 @@
+import { describe, expect, it } from "vitest";
+import { normalizeStatus, reconcileClaim } from "@/lib/reconciliation/reconcileClaim";
+import { sampleClaims } from "@/lib/data/sampleClaims";
+describe("ClaimClarity deterministic reconciliation", () => {
+  it("normalizes prototype evidence statuses", () => { expect(normalizeStatus("Under Process")).toBe("PROCESSING"); expect(normalizeStatus("Claim settled")).toBe("SETTLED"); expect(normalizeStatus("bank credit received")).toBe("CREDITED"); expect(normalizeStatus("unreadable")).toBe("UNKNOWN"); });
+  it("CASE A orders chronology, detects conflict, and selects safe processing action", () => { const r=reconcileClaim(sampleClaims.CASE_A.artifacts,"Rohan Sharma","demo"); expect(r.events.map(x=>x.date)).toEqual(["2026-07-03","2026-07-03","2026-07-04","2026-07-05"]); expect(r.bestSupportedState).toBe("PROCESSING"); expect(r.confidence).toBe("medium"); expect(r.conflicts[0]?.type).toBe("DIFFERENT_STAGES"); expect(r.recommendedAction).toMatch(/Wait and monitor/); expect(r.doNotDo).toMatch(/Don't submit another claim/); });
+  it("CASE B treats later credit as stronger and flags older processing as stale", () => { const r=reconcileClaim(sampleClaims.CASE_B.artifacts,"Asha Verma","demo"); expect(r.bestSupportedState).toBe("CREDITED"); expect(r.confidence).toBe("high"); expect(r.conflicts.some(x=>x.type==="STALE_OBSERVATION")).toBe(true); expect(r.ruleFired).toBe("LATER_CREDIT_EVIDENCE_WINS"); });
+  it("CASE C refuses to guess", () => { const r=reconcileClaim(sampleClaims.CASE_C.artifacts,null,"demo"); expect(r.bestSupportedState).toBe("UNKNOWN"); expect(r.confidence).toBe("low"); expect(r.ruleFired).toBe("INSUFFICIENT_EVIDENCE_REFUSAL"); expect(r.recommendedAction).toMatch(/Add another dated/); });
+  it("flags conflicting identifiers and lowers confidence", () => { const input=sampleClaims.CASE_A.artifacts.map((x,i)=>i===1?{...x,claimId:"OTHER-1"}:x); const r=reconcileClaim(input,"Rohan Sharma","demo"); expect(r.conflicts.some(x=>x.type==="IDENTIFIER_MISMATCH")).toBe(true); expect(r.confidence).toBe("low"); });
+});
