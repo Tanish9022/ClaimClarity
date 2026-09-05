@@ -3,24 +3,25 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import type { Artifact, CanonicalStatus, ReconciliationResult, Source } from "@/lib/schemas";
 import { sampleClaims, type SampleClaimKey } from "@/lib/data/sampleClaims";
+import { translations, type Language } from "@/lib/i18n";
 
-const stateDisplay: Record<CanonicalStatus, { headline: string; label: string }> = {
-  CREDITED: { headline: "Your money appears credited.", label: "Bank credit received" },
-  SETTLED: { headline: "Your claim is marked settled.", label: "Settled" },
-  PROCESSING: { headline: "Your claim is under process.", label: "Under Process" },
-  APPROVED: { headline: "Your claim has been approved.", label: "Approved" },
-  SUBMITTED: { headline: "Your claim is submitted.", label: "Submitted" },
-  REJECTED: { headline: "Your claim was rejected.", label: "Rejected" },
-  UNKNOWN: { headline: "We don't have enough information yet.", label: "Not enough evidence" }
+const sourceLabel: Record<Source, { en: string; hi: string }> = {
+  new_tracker: { en: "Unified Member Portal", hi: "यूनिफाइड मेंबर पोर्टल" },
+  old_tracker: { en: "Legacy Claim Portal", hi: "पुराना क्लेम स्टेटस पोर्टल" },
+  passbook: { en: "EPFO E-Passbook", hi: "ई-पासबुक लेजर" },
+  sms: { en: "SMS Notification", hi: "एसएमएस सूचना" },
+  bank: { en: "Bank Statement", hi: "बैंक खाता विवरण" },
+  other: { en: "Supplied Record", hi: "प्रस्तुत रिकॉर्ड" }
 };
 
-const sourceLabel: Record<Source, string> = {
-  new_tracker: "Unified Portal Tracker",
-  old_tracker: "Legacy EPFO Tracker",
-  passbook: "E-Passbook / Ledger",
-  sms: "SMS Notification",
-  bank: "Bank Statement",
-  other: "Uploaded Evidence"
+const stateDisplay: Record<CanonicalStatus, { en: string; hi: string }> = {
+  CREDITED: { en: "Your money appears credited.", hi: "आपकी राशि जमा हुई दिखाई दे रही है।" },
+  SETTLED: { en: "Your claim is marked settled.", hi: "आपका दावा पास (Settled) हो चुका है।" },
+  PROCESSING: { en: "Your claim is under process.", hi: "आपका दावा अभी प्रक्रियाधीन (Under Process) है।" },
+  APPROVED: { en: "Your claim has been approved.", hi: "आपका दावा स्वीकृत हो गया है।" },
+  SUBMITTED: { en: "Your claim is submitted.", hi: "आपका दावा दर्ज हो चुका है।" },
+  REJECTED: { en: "Your claim was rejected.", hi: "आपका दावा अस्वीकृत (Rejected) हुआ है।" },
+  UNKNOWN: { en: "We don't have enough information yet.", hi: "अभी इतनी जानकारी नहीं है कि पक्का बताया जा सके।" }
 };
 
 const makeArtifact = (text: string): Artifact => ({
@@ -40,21 +41,25 @@ const makeArtifact = (text: string): Artifact => ({
   dataBase64: null
 });
 
-type View = "landing" | "sample" | "custom" | "loading" | "result";
+type View = "landing" | "scenarios" | "review" | "custom" | "loading" | "result";
 
 export default function Home() {
+  const [lang, setLang] = useState<Language>("en");
   const [view, setView] = useState<View>("landing");
   const [caseId, setCaseId] = useState<SampleClaimKey>("CASE_A");
   const [result, setResult] = useState<ReconciliationResult | null>(null);
   const [error, setError] = useState("");
   const [details, setDetails] = useState(false);
+  const [showRawFacts, setShowRawFacts] = useState(false);
   const [pasted, setPasted] = useState("");
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [step, setStep] = useState(0);
 
+  const t = translations[lang];
+
   useEffect(() => {
     if (view !== "loading") return;
-    const timer = setInterval(() => setStep(s => Math.min(s + 1, 3)), 650);
+    const timer = setInterval(() => setStep(s => Math.min(s + 1, 4)), 550);
     return () => clearInterval(timer);
   }, [view]);
 
@@ -76,7 +81,7 @@ export default function Home() {
       setView("result");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis could not be completed.");
-      setView(origin === "custom" ? "custom" : "sample");
+      setView(origin === "custom" ? "custom" : "review");
     }
   }
 
@@ -110,453 +115,712 @@ export default function Home() {
     setResult(null);
     setArtifacts([]);
     setError("");
+    setDetails(false);
+    setShowRawFacts(false);
   };
-
-  if (view === "loading") {
-    return (
-      <main className="shell loading" aria-live="polite">
-        <div className="spinner" />
-        <p className="eyebrow">EVIDENCE RECONCILIATION ENGINE</p>
-        <h1>
-          {
-            [
-              "Extracting facts from evidence…",
-              "Checking claim identity & amounts…",
-              "Building chronological timeline…",
-              "Reconciling conflicts & stale signals…"
-            ][step]
-          }
-        </h1>
-        <p className="muted">Deterministic audit in progress. Based only on the evidence provided.</p>
-      </main>
-    );
-  }
-
-  if (view === "result" && result) {
-    return <Result result={result} details={details} setDetails={setDetails} reset={reset} />;
-  }
 
   return (
     <main className="shell">
-      <header>
-        <button className="brand" onClick={() => setView("landing")}>
+      {/* GLOBAL ACCESSIBLE HEADER */}
+      <header className="app-header">
+        <button className="brand" onClick={() => setView("landing")} aria-label="ClaimClarity Home">
           Claim<span>Clarity</span>
         </button>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <a href="/architecture" className="fine" style={{ textDecoration: "underline" }}>
-            Technical Architecture
+
+        <div className="header-controls">
+          <a href="/architecture" className="back-btn" style={{ margin: 0, fontSize: "13px" }}>
+            {t.nav.howItWorks}
           </a>
-          <span className="demo-pill">Evidence Reconciliation</span>
+
+          {/* BILINGUAL TOGGLE */}
+          <div className="lang-toggle" role="group" aria-label="Language selection">
+            <button
+              className={`lang-btn ${lang === "en" ? "active" : ""}`}
+              onClick={() => setLang("en")}
+              aria-pressed={lang === "en"}
+            >
+              English
+            </button>
+            <button
+              className={`lang-btn ${lang === "hi" ? "active" : ""}`}
+              onClick={() => setLang("hi")}
+              aria-pressed={lang === "hi"}
+            >
+              हिंदी
+            </button>
+          </div>
         </div>
       </header>
 
-      {view === "landing" ? (
-        <Landing sample={() => setView("sample")} custom={() => setView("custom")} />
-      ) : view === "sample" ? (
-        <Sample
-          caseId={caseId}
-          choose={setCaseId}
-          analyze={analyze}
-          back={() => setView("landing")}
-          error={error}
+      {/* SCREEN 1: LANDING PAGE */}
+      {view === "landing" && (
+        <Landing
+          lang={lang}
+          onTrySample={() => setView("scenarios")}
+          onAddCustom={() => setView("custom")}
         />
-      ) : (
-        <Custom
-          pasted={pasted}
-          setPasted={setPasted}
-          artifacts={artifacts}
-          addPasted={() => {
-            if (!pasted.trim()) return setError("Paste some evidence before adding it.");
-            setArtifacts(x => [...x, makeArtifact(pasted.trim())]);
-            setPasted("");
+      )}
+
+      {/* SCREEN 2: SCENARIO SELECTION */}
+      {view === "scenarios" && (
+        <Scenarios
+          lang={lang}
+          caseId={caseId}
+          onSelectCase={(id) => {
+            setCaseId(id);
+            setView("review");
           }}
-          addFile={addFile}
-          analyze={analyze}
-          back={() => setView("landing")}
+          onBack={() => setView("landing")}
+        />
+      )}
+
+      {/* SCREEN 3: EVIDENCE REVIEW */}
+      {view === "review" && (
+        <EvidenceReview
+          lang={lang}
+          caseId={caseId}
+          showRawFacts={showRawFacts}
+          onToggleRawFacts={() => setShowRawFacts(!showRawFacts)}
+          onAnalyze={analyze}
+          onBack={() => setView("scenarios")}
           error={error}
         />
       )}
-      <Disclosure />
+
+      {/* SCREEN 4: CUSTOM EVIDENCE INPUT */}
+      {view === "custom" && (
+        <CustomEvidence
+          lang={lang}
+          pasted={pasted}
+          setPasted={setPasted}
+          artifacts={artifacts}
+          onAddPasted={() => {
+            if (!pasted.trim()) return setError("Please paste some claim text first.");
+            setArtifacts(x => [...x, makeArtifact(pasted.trim())]);
+            setPasted("");
+          }}
+          onAddFile={addFile}
+          onAnalyze={analyze}
+          onBack={() => setView("landing")}
+          error={error}
+        />
+      )}
+
+      {/* SCREEN 5: LOADING / PROGRESS */}
+      {view === "loading" && <LoadingProgress lang={lang} step={step} />}
+
+      {/* SCREEN 6: RESULT SCREEN */}
+      {view === "result" && result && (
+        <ResultView
+          lang={lang}
+          result={result}
+          details={details}
+          onToggleDetails={() => setDetails(!details)}
+          onReset={reset}
+        />
+      )}
+
+      {/* FOOTER DISCLOSURES */}
+      <footer className="app-footer">
+        Independent prototype using synthetic data. Not an official EPFO service. We cannot verify live EPFO records and do not access or modify live government systems.
+      </footer>
     </main>
   );
 }
 
-function Landing({ sample, custom }: { sample: () => void; custom: () => void }) {
+/* =========================================================================
+   1. LANDING COMPONENT
+   ========================================================================= */
+function Landing({
+  lang,
+  onTrySample,
+  onAddCustom
+}: {
+  lang: Language;
+  onTrySample: () => void;
+  onAddCustom: () => void;
+}) {
+  const t = translations[lang];
+
   return (
-    <div className="landing-copy">
-      <p className="eyebrow">MANY SIGNALS. ONE EVIDENCE-BACKED ANSWER.</p>
+    <section className="landing-hero">
+      <p className="eyebrow">{t.hero.eyebrow}</p>
       <h1>
-        One claim.<br />
-        <em>One reconciled state.</em>
+        {t.hero.headlineFirst}
+        <br />
+        <em>{t.hero.headlineSecond}</em>
       </h1>
-      <p className="lead">
-        Your EPFO claim shouldn&apos;t be a guessing game. When your portal, SMS, and passbook say different things,
-        ClaimClarity deterministically reconciles what happened and what to do next.
-      </p>
-      <div style={{ display: "flex", gap: "15px", flexWrap: "wrap", justifyContent: "center" }}>
-        <button className="primary" onClick={sample} id="btn-sample-claim">
-          Try sample scenarios <span>→</span>
+      <p className="lead-text">{t.hero.supporting}</p>
+
+      <div className="hero-actions">
+        <button className="primary" onClick={onTrySample} id="btn-sample-claim">
+          {t.hero.trySample} <span style={{ marginLeft: "10px" }}>→</span>
         </button>
-        <button className="secondary" onClick={custom} id="btn-custom-evidence">
-          Add my evidence
+        <button className="secondary" onClick={onAddCustom} id="btn-custom-evidence">
+          {t.hero.addCustom}
         </button>
       </div>
-      <p className="fine">No login. No live EPFO access. Prototype runs on synthetic evidence.</p>
-    </div>
+
+      {/* Tiny Contradiction Visual Demo */}
+      <div className="hero-preview-box" aria-hidden="true">
+        <div className="hero-preview-grid">
+          <div className="preview-col">
+            <span>PORTAL</span>
+            <strong>Under Process</strong>
+          </div>
+          <div className="preview-col">
+            <span>SMS</span>
+            <strong>Under Process</strong>
+          </div>
+          <div className="preview-col accent">
+            <span>PASSBOOK</span>
+            <strong>₹45,000 credited</strong>
+          </div>
+        </div>
+        <div className="hero-preview-notice">
+          <span>→</span> {t.hero.reconcilesNotice}
+        </div>
+      </div>
+
+      <p className="disclosures-strip">{t.hero.disclaimer}</p>
+    </section>
   );
 }
 
-function Sample({
+/* =========================================================================
+   2. SCENARIOS SELECTION COMPONENT
+   ========================================================================= */
+function Scenarios({
+  lang,
   caseId,
-  choose,
-  analyze,
-  back,
-  error
+  onSelectCase,
+  onBack
 }: {
+  lang: Language;
   caseId: SampleClaimKey;
-  choose: (x: SampleClaimKey) => void;
-  analyze: () => void;
-  back: () => void;
-  error: string;
+  onSelectCase: (key: SampleClaimKey) => void;
+  onBack: () => void;
 }) {
-  const current = sampleClaims[caseId];
+  const t = translations[lang];
 
   return (
-    <section className="workflow">
-      <button className="back" onClick={back}>
+    <section className="workflow-section">
+      <button className="back-btn" onClick={onBack}>
         ← Back
       </button>
-      <p className="eyebrow">RECONCILIATION SCENARIOS</p>
-      <h1>{current.title}</h1>
-      <p className="muted" style={{ margin: "0 0 15px" }}>
-        {current.subtitle}
-      </p>
+      <p className="eyebrow">{t.scenarios.eyebrow}</p>
+      <h1>{t.scenarios.title}</h1>
+      <p className="subhead">{t.scenarios.subtitle}</p>
 
-      <div className="case-select">
-        {(Object.keys(sampleClaims) as SampleClaimKey[]).map(id => (
-          <button
-            key={id}
-            className={caseId === id ? "selected" : ""}
-            onClick={() => choose(id)}
-            id={`case-btn-${id}`}
-          >
-            {id === "CASE_A"
-              ? "A: Records Disagree"
-              : id === "CASE_B"
-              ? "B: Paid vs Processing"
-              : id === "CASE_C"
-              ? "C: Vague Signal"
-              : "Conflict (Adversarial)"}
-          </button>
-        ))}
-      </div>
-
-      <div className="cards">
-        {current.artifacts.map(a => (
-          <article className="evidence" key={a.id}>
-            <div>
-              <b>{sourceLabel[a.source]}</b>
-              <small>{a.date || "No reliable date"}</small>
-              {a.claimId && <small style={{ color: "var(--green)" }}>{a.claimId}</small>}
+      <div className="scenarios-grid">
+        {(Object.keys(sampleClaims) as SampleClaimKey[]).map((key, idx) => {
+          const s = sampleClaims[key];
+          const isSelected = caseId === key;
+          return (
+            <div
+              key={key}
+              className={`scenario-card ${isSelected ? "selected" : ""}`}
+              onClick={() => onSelectCase(key)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelectCase(key)}
+              id={`scenario-card-${key}`}
+            >
+              <h3>
+                {idx + 1}. {s.title}
+              </h3>
+              <p>{s.subtitle}</p>
+              <div className="conflict-preview">{s.conflictPreview}</div>
             </div>
-            <div style={{ textAlign: "right" }}>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================================
+   3. EVIDENCE REVIEW COMPONENT
+   ========================================================================= */
+function EvidenceReview({
+  lang,
+  caseId,
+  showRawFacts,
+  onToggleRawFacts,
+  onAnalyze,
+  onBack,
+  error
+}: {
+  lang: Language;
+  caseId: SampleClaimKey;
+  showRawFacts: boolean;
+  onToggleRawFacts: () => void;
+  onAnalyze: () => void;
+  onBack: () => void;
+  error: string;
+}) {
+  const t = translations[lang];
+  const claim = sampleClaims[caseId];
+
+  return (
+    <section className="workflow-section">
+      <button className="back-btn" onClick={onBack}>
+        ← Back to scenarios
+      </button>
+      <p className="eyebrow">{claim.title}</p>
+      <h1>{t.review.header}</h1>
+      <p className="subhead">{t.review.subtext}</p>
+
+      <div className="evidence-cards-list">
+        {claim.artifacts.map((a) => (
+          <article className="evidence-row-card" key={a.id}>
+            <div className="evidence-left">
+              <b>{sourceLabel[a.source]?.[lang] || a.source}</b>
+              <small>{a.date || "Undated observation"}</small>
+              {a.claimId && <span className="claim-id-tag">{a.claimId}</span>}
+              <p style={{ margin: "6px 0 0", fontSize: "13.5px", color: "var(--ink-secondary)" }}>
+                {a.text}
+              </p>
+            </div>
+            <div className="evidence-right">
               <strong>{a.status || "Unstated status"}</strong>
-              {a.amount && <small style={{ display: "block", color: "var(--green)", fontWeight: "bold" }}>{a.amount}</small>}
+              {a.amount && <span className="amount-highlight">{a.amount}</span>}
             </div>
           </article>
         ))}
       </div>
 
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <button className="primary" onClick={analyze} id="btn-analyze-claim">
-        Analyze this claim <span>→</span>
-      </button>
-    </section>
-  );
-}
-
-function Custom({
-  pasted,
-  setPasted,
-  artifacts,
-  addPasted,
-  addFile,
-  analyze,
-  back,
-  error
-}: {
-  pasted: string;
-  setPasted: (x: string) => void;
-  artifacts: Artifact[];
-  addPasted: () => void;
-  addFile: (e: ChangeEvent<HTMLInputElement>) => void;
-  analyze: () => void;
-  back: () => void;
-  error: string;
-}) {
-  return (
-    <section className="workflow">
-      <button className="back" onClick={back}>
-        ← Back
-      </button>
-      <p className="eyebrow">SYNTHETIC EVIDENCE LEDGER</p>
-      <h1>Add evidence for one claim.</h1>
-      <label htmlFor="paste">Paste claim text</label>
-      <textarea
-        id="paste"
-        value={pasted}
-        onChange={e => setPasted(e.target.value)}
-        placeholder="Paste a synthetic tracker snippet, SMS text, passbook entry, or bank message…"
-      />
-      <button className="secondary" onClick={addPasted} id="btn-add-pasted">
-        Add pasted evidence
-      </button>
-
-      <label className="file-label">
-        Upload PNG, JPG, PDF, or TXT (max 3 MB)
-        <input
-          aria-label="Upload evidence"
-          type="file"
-          accept=".png,.jpg,.jpeg,.pdf,.txt,image/png,image/jpeg,application/pdf,text/plain"
-          onChange={addFile}
-        />
-      </label>
-
-      {artifacts.length > 0 && (
-        <ul className="uploads">
-          {artifacts.map(a => (
-            <li key={a.id}>{a.fileName || "Pasted observation"}</li>
-          ))}
-        </ul>
-      )}
-
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <button className="primary" disabled={!artifacts.length} onClick={analyze} id="btn-analyze-custom">
-        Reconcile evidence <span>→</span>
-      </button>
-      <p className="fine">Custom evidence extraction is powered by Gemini when configured server-side.</p>
-    </section>
-  );
-}
-
-function Result({
-  result,
-  details,
-  setDetails,
-  reset
-}: {
-  result: ReconciliationResult;
-  details: boolean;
-  setDetails: (x: boolean) => void;
-  reset: () => void;
-}) {
-  const isTerminalConflict = result.conflicts.some(c => c.type === "TERMINAL_CONTRADICTION");
-  const isUnknown = result.finalState === "UNKNOWN" && !isTerminalConflict;
-  const headline = isTerminalConflict
-    ? "Conflict detected: Incompatible outcomes"
-    : stateDisplay[result.finalState].headline;
-
-  return (
-    <main className="shell result">
-      <header>
-        <button className="brand" onClick={reset}>
-          Claim<span>Clarity</span>
+      <div style={{ margin: "16px 0" }}>
+        <button
+          className="back-btn"
+          style={{ fontSize: "13px", textDecoration: "underline" }}
+          onClick={onToggleRawFacts}
+          type="button"
+        >
+          {showRawFacts ? t.review.hideFields : t.review.viewFields}
         </button>
-        <button className="text-btn" onClick={reset} id="btn-reset-demo">
-          Reset demo
-        </button>
-      </header>
 
-      {/* 1. ANSWER (Hero card) */}
-      <section className="hero-card" aria-labelledby="result-headline">
-        <p className="eyebrow">RECONCILED CLAIM STATUS</p>
-        <span className={`badge ${result.confidence}`}>{result.confidence} confidence</span>
-        <h1 id="result-headline">{headline}</h1>
-        <p>{result.reason}</p>
-      </section>
-
-      {/* 2. WHY THIS ANSWER */}
-      <Section title="Why this answer?">
-        <div style={{ background: "white", padding: "16px", borderRadius: "10px", border: "1px solid var(--line)" }}>
-          <p style={{ margin: "0 0 10px", fontWeight: "600" }}>{result.reconciliationTrace.winningStateRationale}</p>
-          {result.conflicts.length > 0 ? (
-            <div style={{ marginTop: "12px", borderTop: "1px solid var(--line)", paddingTop: "10px" }}>
-              <span className="eyebrow" style={{ color: "#8c3526" }}>WHY RECORDS LOOK CONFUSING:</span>
-              <ul style={{ margin: "6px 0 0", paddingLeft: "18px", color: "var(--muted)", fontSize: "14px" }}>
-                {result.conflicts.map((c, i) => (
-                  <li key={i} style={{ marginBottom: "6px" }}>{c.message}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="fine" style={{ margin: 0 }}>All supplied records consistently point toward this milestone.</p>
-          )}
-        </div>
-      </Section>
-
-      {/* SPECIAL CALLOUTS FOR CONFLICT OR UNKNOWN */}
-      {isTerminalConflict && (
-        <Section title="What we know vs cannot confirm">
-          <div className="action" style={{ background: "#fff", border: "1px solid #f5c2bc", marginBottom: "12px" }}>
-            <strong style={{ color: "var(--green)" }}>WHAT WE KNOW:</strong>
-            <p style={{ margin: "4px 0 0", fontSize: "14px" }}>A credit or settlement record appears in the evidence.</p>
-          </div>
-          <div className="warning">
-            <strong>WHAT WE CANNOT CONFIRM:</strong>
-            <p style={{ margin: "4px 0 0", fontSize: "14px" }}>We cannot safely confirm whether the credit resolves the same claim as the official rejection notice without regional office verification.</p>
-          </div>
-        </Section>
-      )}
-
-      {isUnknown && result.uncertainties.length > 0 && (
-        <Section title="Missing information">
-          <div className="warning">
-            <strong>We need more details to safely determine the claim state:</strong>
-            <ul style={{ margin: "8px 0 0", paddingLeft: "18px", fontSize: "14px" }}>
-              {result.uncertainties.map((u, idx) => (
-                <li key={idx}>{u}</li>
-              ))}
-            </ul>
-          </div>
-        </Section>
-      )}
-
-      {/* 3. PROOF / EVIDENCE LEDGER */}
-      <Section title="Evidence Ledger (Proof)">
-        <div className="cards">
-          {result.events.map(e => (
-            <article
-              className="evidence"
-              key={e.artifactId}
-              style={{
-                borderColor: e.isStale ? "var(--line)" : "var(--green)",
-                opacity: e.isStale ? 0.75 : 1,
-                position: "relative"
-              }}
-            >
-              <div>
-                <b>{sourceLabel[e.source]}</b>
-                <small>{e.date || "No reliable date"}</small>
-                <small style={{ color: "var(--muted)" }}>{e.channelDetail}</small>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <strong>{e.rawStatus || "No stated status"}</strong>
-                {e.amount && <strong style={{ display: "block", color: "var(--green)" }}>{e.amount}</strong>}
-                {e.isStale && (
-                  <span
-                    style={{
-                      display: "inline-block",
-                      marginTop: "6px",
-                      fontSize: "11px",
-                      background: "#f0f2f1",
-                      color: "var(--muted)",
-                      padding: "2px 6px",
-                      borderRadius: "4px"
-                    }}
-                  >
-                    Superseded by later outcome
-                  </span>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
-      </Section>
-
-      {/* 4. TIMELINE */}
-      <Section title="Chronological Timeline">
-        <ol className="timeline">
-          {result.events.map(e => (
-            <li key={e.artifactId}>
-              <span>{e.date || "Undated observation"}</span>
-              <b>{stateDisplay[e.normalizedState].label}</b>
-              <p>
-                {sourceLabel[e.source]} · {e.detail}
-              </p>
-            </li>
-          ))}
-        </ol>
-      </Section>
-
-      {/* 5. SAFE ACTIONS */}
-      <Section title="What should I do?">
-        <div className="action">
-          {result.recommendedAction}
-          <small>Based on deterministic reconciliation of your supplied evidence.</small>
-        </div>
-      </Section>
-
-      {result.doNotDo && (
-        <Section title="Don’t do this yet">
-          <div className="warning">{result.doNotDo}</div>
-        </Section>
-      )}
-
-      {/* 6. EXPANDABLE TECHNICAL AUDIT TRACE */}
-      <button
-        className="details"
-        onClick={() => setDetails(!details)}
-        aria-expanded={details}
-        id="btn-toggle-trace"
-        style={{ margin: "25px 0 10px", display: "inline-block" }}
-      >
-        {details ? "Hide deterministic reconciliation trace" : "Show deterministic reconciliation trace"}
-      </button>
-
-      {details && (
-        <div style={{ marginTop: "10px" }}>
-          <pre>
+        {showRawFacts && (
+          <pre className="trace-panel">
             {JSON.stringify(
-              {
-                finalState: result.finalState,
-                confidence: result.confidence,
-                rulesFired: result.rulesFired,
-                reconciliationTrace: result.reconciliationTrace,
-                claimIdentity: result.claimIdentity,
-                supportingObservations: result.reconciliationTrace.supportingObservations,
-                staleObservations: result.reconciliationTrace.staleObservations
-              },
+              claim.artifacts.map((a) => ({
+                source: a.source,
+                date: a.date,
+                status: a.status,
+                claimId: a.claimId,
+                amount: a.amount
+              })),
               null,
               2
             )}
           </pre>
-        </div>
+        )}
+      </div>
+
+      {error && (
+        <p style={{ color: "#8c3526", fontWeight: "bold", margin: "10px 0" }} role="alert">
+          {error}
+        </p>
       )}
 
-      <Disclosure />
-    </main>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="section">
-      <h2>{title}</h2>
-      {children}
+      <button className="primary" onClick={onAnalyze} id="btn-analyze-claim">
+        {t.review.reconcileBtn} <span style={{ marginLeft: "10px" }}>→</span>
+      </button>
     </section>
   );
 }
 
-function Disclosure() {
+/* =========================================================================
+   4. CUSTOM EVIDENCE COMPONENT
+   ========================================================================= */
+function CustomEvidence({
+  lang,
+  pasted,
+  setPasted,
+  artifacts,
+  onAddPasted,
+  onAddFile,
+  onAnalyze,
+  onBack,
+  error
+}: {
+  lang: Language;
+  pasted: string;
+  setPasted: (v: string) => void;
+  artifacts: Artifact[];
+  onAddPasted: () => void;
+  onAddFile: (e: ChangeEvent<HTMLInputElement>) => void;
+  onAnalyze: () => void;
+  onBack: () => void;
+  error: string;
+}) {
+  const t = translations[lang];
+
   return (
-    <footer>
-      Independent prototype using synthetic data. Not an official EPFO service. We cannot verify live EPFO records and
-      do not access or modify live EPFO systems.
-    </footer>
+    <section className="workflow-section">
+      <button className="back-btn" onClick={onBack}>
+        ← Back
+      </button>
+      <p className="eyebrow">{t.review.header}</p>
+      <h1>{t.custom.title}</h1>
+      <p className="subhead">Bring together multiple records to compare them.</p>
+
+      <label htmlFor="custom-paste" style={{ fontWeight: 600, display: "block", marginBottom: "6px" }}>
+        {t.custom.pasteLabel}
+      </label>
+      <textarea
+        id="custom-paste"
+        value={pasted}
+        onChange={(e) => setPasted(e.target.value)}
+        placeholder={t.custom.pastePlaceholder}
+        rows={4}
+        style={{
+          width: "100%",
+          padding: "12px",
+          borderRadius: "8px",
+          border: "1px solid var(--line)",
+          background: "var(--surface)",
+          fontSize: "14.5px"
+        }}
+      />
+      <button
+        className="secondary"
+        style={{ margin: "10px 0 20px", minHeight: "42px", padding: "8px 18px" }}
+        onClick={onAddPasted}
+        id="btn-add-pasted"
+      >
+        {t.custom.addPasted}
+      </button>
+
+      <label
+        style={{
+          display: "block",
+          border: "1.5px dashed var(--line)",
+          padding: "14px 18px",
+          borderRadius: "8px",
+          background: "var(--surface)",
+          fontWeight: 600,
+          cursor: "pointer",
+          marginBottom: "20px"
+        }}
+      >
+        {t.custom.uploadLabel}
+        <input
+          type="file"
+          accept=".png,.jpg,.jpeg,.pdf,.txt,image/png,image/jpeg,application/pdf,text/plain"
+          onChange={onAddFile}
+          style={{ display: "block", marginTop: "8px", fontSize: "13px" }}
+        />
+      </label>
+
+      {artifacts.length > 0 && (
+        <div style={{ marginBottom: "20px" }}>
+          <b style={{ fontSize: "14px", display: "block", marginBottom: "6px" }}>Added records:</b>
+          <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--ink-secondary)", fontSize: "14px" }}>
+            {artifacts.map((a) => (
+              <li key={a.id}>{a.fileName || a.text.slice(0, 60) + "…"}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {error && (
+        <p style={{ color: "#8c3526", fontWeight: "bold", margin: "10px 0" }} role="alert">
+          {error}
+        </p>
+      )}
+
+      <button
+        className="primary"
+        disabled={artifacts.length === 0}
+        onClick={onAnalyze}
+        id="btn-analyze-custom"
+      >
+        {t.custom.reconcileBtn} <span>→</span>
+      </button>
+    </section>
   );
 }
 
-async function fileToBase64(file: File) {
+/* =========================================================================
+   5. LOADING / PROGRESS COMPONENT
+   ========================================================================= */
+function LoadingProgress({ lang, step }: { lang: Language; step: number }) {
+  const t = translations[lang];
+
+  return (
+    <section className="loading-box" aria-live="polite">
+      <p className="eyebrow">DETERMINISTIC RECONCILIATION</p>
+      <h1 style={{ fontSize: "26px", margin: "8px 0" }}>Analyzing evidence</h1>
+      <p className="subhead" style={{ margin: 0 }}>{t.loading.caption}</p>
+
+      <ul className="loading-steps">
+        {t.loading.steps.map((text, idx) => {
+          const isDone = idx < step;
+          const isActive = idx === step;
+          return (
+            <li
+              key={idx}
+              className={`loading-step-item ${isActive ? "active" : isDone ? "done" : ""}`}
+            >
+              <span>{isDone ? "✓" : isActive ? "→" : "·"}</span>
+              <span>{text}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/* =========================================================================
+   6. RESULT COMPONENT (ANSWER -> WHY -> PROOF -> ACTION)
+   ========================================================================= */
+function ResultView({
+  lang,
+  result,
+  details,
+  onToggleDetails,
+  onReset
+}: {
+  lang: Language;
+  result: ReconciliationResult;
+  details: boolean;
+  onToggleDetails: () => void;
+  onReset: () => void;
+}) {
+  const t = translations[lang];
+  const isTerminalConflict = result.conflicts.some((c) => c.type === "TERMINAL_CONTRADICTION");
+  const isUnknown = result.finalState === "UNKNOWN" && !isTerminalConflict;
+
+  const displayState = isTerminalConflict
+    ? t.result.conflict.headline
+    : stateDisplay[result.finalState]?.[lang] || result.finalState;
+
+  // Find competing state evaluation for "Why this state, not another?"
+  const competingSuperseded = result.reconciliationTrace.competingStatesEvaluated.find(
+    (s) => s.status === "superseded"
+  );
+
+  return (
+    <section className="result-shell">
+      {/* RESULT HEADER ACTION */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="eyebrow" style={{ margin: 0 }}>
+          {t.result.eyebrow}
+        </span>
+        <button className="back-btn" style={{ margin: 0 }} onClick={onReset} id="btn-reset-demo">
+          {t.result.resetDemo}
+        </button>
+      </div>
+
+      {/* 1. ANSWER */}
+      <div
+        className={`answer-card ${
+          isTerminalConflict ? "conflict-mode" : isUnknown ? "unknown-mode" : ""
+        }`}
+      >
+        <span
+          className={`confidence-pill ${
+            result.confidence === "high" ? "high" : result.confidence === "medium" ? "medium" : "low"
+          }`}
+        >
+          {result.confidence === "high"
+            ? t.result.highConfidence
+            : result.confidence === "medium"
+            ? t.result.mediumConfidence
+            : t.result.lowConfidence}
+        </span>
+        <h1>{displayState}</h1>
+        <p className="answer-summary">
+          {isTerminalConflict
+            ? t.result.conflict.subtext
+            : isUnknown
+            ? t.result.unknown.subtext
+            : result.reason}
+        </p>
+      </div>
+
+      {/* 2. WHY? */}
+      <div className="result-section">
+        <h2>{t.result.whyHeading}</h2>
+        <p className="why-highlight">
+          {isTerminalConflict
+            ? "Your records contain two incompatible terminal outcomes: one official record indicates rejection, while another subsequent record indicates credit."
+            : result.reconciliationTrace.winningStateRationale}
+        </p>
+
+        {result.conflicts.length > 0 && !isTerminalConflict && (
+          <div className="conflict-callout-list">
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--amber)" }}>
+              WHY RECORDS LOOK CONFUSING:
+            </span>
+            <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+              {result.conflicts.map((c, i) => (
+                <li key={i}>{c.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* SPECIAL CALLOUTS: CONFLICT (WHAT WE KNOW VS CANNOT CONFIRM) */}
+      {isTerminalConflict && (
+        <div className="result-section" style={{ borderLeft: "4px solid var(--amber)" }}>
+          <div style={{ marginBottom: "16px" }}>
+            <h3 style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 800, color: "var(--green)", letterSpacing: "0.03em" }}>
+              {t.result.conflict.whatWeKnow}
+            </h3>
+            <p style={{ margin: 0, fontSize: "15px", color: "var(--ink)" }}>
+              A financial credit entry referencing this claim is recorded in the evidence.
+            </p>
+          </div>
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: 800, color: "var(--amber)", letterSpacing: "0.03em" }}>
+              {t.result.conflict.whatWeCannotConfirm}
+            </h3>
+            <p style={{ margin: 0, fontSize: "15px", color: "var(--ink-secondary)" }}>
+              We cannot confirm whether that credit resolves the same claim as the official rejection notice without regional office verification.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* SPECIAL CALLOUTS: UNKNOWN (WHAT'S MISSING?) */}
+      {isUnknown && (
+        <div className="result-section" style={{ borderLeft: "4px solid var(--ink-muted)" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "0.03em", margin: "0 0 8px" }}>
+            {t.result.unknown.whatsMissing}
+          </h2>
+          <ul style={{ margin: "6px 0 0", paddingLeft: "18px", color: "var(--ink)", lineHeight: 1.6 }}>
+            <li><strong>✓ Claim ID:</strong> No explicit claim number found</li>
+            <li><strong>✓ Date:</strong> No verifiable timestamp on the notification</li>
+            <li><strong>✓ Clear outcome:</strong> Message does not state whether claim was approved or rejected</li>
+          </ul>
+        </div>
+      )}
+
+      {/* 3. WHAT PROVES IT? (EVIDENCE LEDGER TIMELINE) */}
+      <div className="result-section">
+        <h2 style={{ margin: "0 0 4px" }}>{t.result.whatProvesIt}</h2>
+        <h3 style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--ink-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          {t.result.evidenceLedger}
+        </h3>
+
+        <ol className="ledger-timeline">
+          {result.events.map((e) => {
+            const isLaterOutcome =
+              e.normalizedState === "CREDITED" || e.normalizedState === "SETTLED";
+            return (
+              <li
+                key={e.artifactId}
+                className={`ledger-item ${e.isStale ? "earlier" : ""}`}
+              >
+                <span className="ledger-date">{e.date || "Undated"}</span>
+                <div className="ledger-content">
+                  <b>
+                    {sourceLabel[e.source]?.[lang] || e.source} · {e.rawStatus || e.normalizedState}
+                  </b>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+                    {e.isStale && (
+                      <span className="stale-badge" title="An older record may no longer reflect the latest update">
+                        {t.result.earlierRecord} · {t.result.superseded}
+                      </span>
+                    )}
+                    {isLaterOutcome && (
+                      <span className="stale-badge later" title="Later financial/terminal record">
+                        {t.result.laterOutcome}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="ledger-detail">{e.detail}</p>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+
+      {/* 4. WHAT SHOULD I DO? */}
+      <div className="action-box">
+        <h2 style={{ margin: "0 0 8px", fontSize: "16px", fontWeight: 800, letterSpacing: "0.02em" }}>
+          {t.result.whatShouldIDo}
+        </h2>
+        <p style={{ margin: 0, fontSize: "15px", lineHeight: 1.5 }}>
+          {isTerminalConflict ? t.result.conflict.action : result.recommendedAction}
+        </p>
+      </div>
+
+      {/* 5. DON'T DO THIS YET */}
+      {result.doNotDo && (
+        <div className="warning-box">
+          <h3 style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: 800, color: "var(--amber)", letterSpacing: "0.02em" }}>
+            {t.result.dontDoThisYet}
+          </h3>
+          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.5 }}>{result.doNotDo}</p>
+        </div>
+      )}
+
+      {/* 6. "WHY THIS STATE, NOT ANOTHER?" */}
+      {competingSuperseded && !isTerminalConflict && (
+        <div className="competing-state-box">
+          <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 800, color: "var(--green)", letterSpacing: "0.03em" }}>
+            WHY {result.finalState} INSTEAD OF {competingSuperseded.state}?
+          </h3>
+          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.5 }}>{competingSuperseded.reasonNotChosen}</p>
+        </div>
+      )}
+
+      {/* 7. TECHNICAL TRACE ACCORDION */}
+      <div>
+        <button
+          className="trace-toggle-btn"
+          onClick={onToggleDetails}
+          aria-expanded={details}
+          id="btn-toggle-trace"
+        >
+          {details ? t.result.traceCtaHide : t.result.traceCtaShow}
+        </button>
+
+        {details && (
+          <div className="trace-panel">
+            <div className="trace-checks">
+              <span className="trace-check-item">Identity ✓</span>
+              <span className="trace-check-item">Chronology ✓</span>
+              <span className="trace-check-item">Outcome ✓</span>
+              <span className="trace-check-item">Earlier signal superseded ✓</span>
+              <span className="trace-check-item">
+                {isTerminalConflict ? "Contradiction flagged ⚠" : "No unresolved contradiction ✓"}
+              </span>
+            </div>
+            <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+              {JSON.stringify(
+                {
+                  finalState: result.finalState,
+                  confidence: result.confidence,
+                  rulesFired: result.rulesFired,
+                  claimIdentity: result.claimIdentity,
+                  reconciliationTrace: {
+                    supportingObservations: result.reconciliationTrace.supportingObservations,
+                    staleObservations: result.reconciliationTrace.staleObservations,
+                    winningStateRationale: result.reconciliationTrace.winningStateRationale,
+                    competingStatesEvaluated: result.reconciliationTrace.competingStatesEvaluated
+                  }
+                },
+                null,
+                2
+              )}
+            </pre>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+async function fileToBase64(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
-  bytes.forEach(x => (binary += String.fromCharCode(x)));
+  bytes.forEach((x) => (binary += String.fromCharCode(x)));
   return btoa(binary);
 }

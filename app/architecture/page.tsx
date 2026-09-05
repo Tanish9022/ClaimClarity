@@ -1,409 +1,445 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 
+interface Stage {
+  id: string;
+  name: string;
+  category: "INPUT" | "AI" | "VALIDATION" | "REASONING" | "OUTPUT";
+  summary: string;
+  does: string[];
+  doesNot: string[];
+}
+
+const ARCHITECTURE_STAGES: Stage[] = [
+  {
+    id: "evidence",
+    name: "1. Citizen Evidence",
+    category: "INPUT",
+    summary: "Screenshots, passbook entries, claim tracker records, and SMS notices provided by the citizen.",
+    does: [
+      "Accept user-provided images, screenshots, and text messages",
+      "Preserve original artifacts and source types unmodified",
+      "Protect citizen privacy by operating without live login credentials"
+    ],
+    doesNot: [
+      "Query live government servers or connect to EPFO databases",
+      "Mutate or file any real claims",
+      "Store private citizen credentials"
+    ]
+  },
+  {
+    id: "ai-extraction",
+    name: "2. AI Evidence Extraction",
+    category: "AI",
+    summary: "Multimodal vision & language extraction converts messy artifacts into candidate observations.",
+    does: [
+      "Extract explicit dates, claim IDs, raw status strings, and monetary amounts",
+      "Record provenance pointers directly back to the originating artifact",
+      "Preserve textual ambiguity and explicit uncertainties"
+    ],
+    doesNot: [
+      "Decide the official claim outcome or final claim state",
+      "Hallucinate or infer missing facts not present in the record",
+      "Give free-form unconstrained advice to the citizen"
+    ]
+  },
+  {
+    id: "validation",
+    name: "3. Validated Structured Facts",
+    category: "VALIDATION",
+    summary: "Rigorous runtime schema validation (Zod) rejects malformed or unverified model outputs.",
+    does: [
+      "Enforce strict typing on every extracted observation",
+      "Reject malformed dates, invalid currencies, and schema drift",
+      "Drop observations that fail structural integrity checks"
+    ],
+    doesNot: [
+      "Allow loose or unparsed AI JSON into the reconciliation pipeline",
+      "Modify the underlying extracted values during validation"
+    ]
+  },
+  {
+    id: "identity-chronology",
+    name: "4. Identity + Chronology",
+    category: "REASONING",
+    summary: "Group records by verified claim identifier and sequence them into a strict chronological timeline.",
+    does: [
+      "Check identifier matching across different sources (Portal vs SMS vs Passbook)",
+      "Flag claims with missing or discordant identifiers",
+      "Sort dated events from earliest to latest"
+    ],
+    doesNot: [
+      "Assume records belong to the same claim if IDs directly contradict",
+      "Rely on file upload order instead of explicit event dates"
+    ]
+  },
+  {
+    id: "event-semantics",
+    name: "5. Event Semantics",
+    category: "REASONING",
+    summary: "Map raw source phrases into clear lifecycle semantics (In-Flight vs Terminal vs Financial).",
+    does: [
+      "Classify stages: In-Flight (Submitted, Under Process), Terminal (Approved, Rejected, Settled), Financial (Credited)",
+      "Recognize that a Passbook credit represents post-settlement financial evidence"
+    ],
+    doesNot: [
+      "Treat all statuses as equally authoritative regardless of stage",
+      "Conflate procedural processing with final disbursement"
+    ]
+  },
+  {
+    id: "conflict-stale",
+    name: "6. Conflict / Stale Checks",
+    category: "REASONING",
+    summary: "Detect outdated records superseded by newer outcomes and surface true terminal contradictions.",
+    does: [
+      "Mark earlier in-flight records as superseded by later terminal states",
+      "Detect impossible terminal contradictions (e.g. definitive rejection vs bank credit)",
+      "Highlight when older portals lag behind newer financial records"
+    ],
+    doesNot: [
+      "Silently discard contradictions to force a tidy answer",
+      "Allow an older 'Under Process' banner to overturn a later credit"
+    ]
+  },
+  {
+    id: "deterministic-reconciliation",
+    name: "7. Deterministic Reconciliation",
+    category: "REASONING",
+    summary: "Pure rule-based state machine evaluates all facts to select the best-supported claim state.",
+    does: [
+      "Evaluate chronology, identity, contradictions, and evidence quality",
+      "Emit an exact mathematical confidence score (High, Medium, Low)",
+      "Safely refuse with CONFLICT or UNKNOWN when evidence is contradictory or insufficient"
+    ],
+    doesNot: [
+      "Invent facts or guess outcomes",
+      "Rely on probabilistic token generation for the final decision",
+      "Change answers across repeated runs with the same input"
+    ]
+  },
+  {
+    id: "evidence-ledger",
+    name: "8. Evidence Ledger",
+    category: "OUTPUT",
+    summary: "Construct an auditable, timestamped ledger linking every conclusion directly to supporting records.",
+    does: [
+      "Show citizens the chronological timeline of what each source claimed",
+      "Tag records clearly: 'Later outcome', 'Earlier record', 'Superseded'",
+      "Provide complete provenance for technical and grievance review"
+    ],
+    doesNot: [
+      "Present 'black-box' assertions without citation",
+      "Hide discordant evidence from the citizen"
+    ]
+  },
+  {
+    id: "answer-action",
+    name: "9. Plain-Language Answer + Action",
+    category: "OUTPUT",
+    summary: "Deliver the 4 critical citizen answers: What happened, Why, What proves it, and What to do next.",
+    does: [
+      "Answer in plain, accessible language in under 5 seconds",
+      "State clear recommended next actions and critical 'Don't do this yet' warnings",
+      "Provide a collapsed technical audit trace for reviewers"
+    ],
+    doesNot: [
+      "Use bureaucratic jargon or technical error codes in primary view",
+      "Encourage premature duplicate claims or costly grievance filings"
+    ]
+  }
+];
+
 export default function ArchitecturePage() {
-  const [pipelineStep, setPipelineStep] = useState(0);
-  const [isTracing, setIsTracing] = useState(false);
-  const [geminiMode, setGeminiMode] = useState(false);
+  const [expandedStage, setExpandedStage] = useState<string | null>("ai-extraction");
 
-  const startTrace = (useGemini: boolean) => {
-    setGeminiMode(useGemini);
-    setIsTracing(true);
-    setPipelineStep(1);
-  };
-
-  useEffect(() => {
-    if (isTracing && pipelineStep > 0 && pipelineStep < 5) {
-      const timer = setTimeout(() => setPipelineStep(pipelineStep + 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (pipelineStep === 5) {
-      const timer = setTimeout(() => setIsTracing(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [pipelineStep, isTracing]);
-
-  const getNodeClass = (stepNum: number) => {
-    if (!isTracing && pipelineStep === 0) return "pipeline-node trace-node";
-    if (pipelineStep > stepNum) return "pipeline-node trace-node done";
-    if (pipelineStep === stepNum) return "pipeline-node trace-node active";
-    return "pipeline-node trace-node";
-  };
-
-  const getConnectorClass = (stepNum: number) => {
-    if (!isTracing && pipelineStep === 0) return "pipeline-connector trace-connector";
-    if (pipelineStep >= stepNum) return "pipeline-connector trace-connector active";
-    return "pipeline-connector trace-connector";
+  const toggleStage = (id: string) => {
+    setExpandedStage(expandedStage === id ? null : id);
   };
 
   return (
-    <main className="shell" style={{ maxWidth: '1000px', width: '100%' }}>
-      <header style={{ marginBottom: "0px", paddingBottom: "10px", borderBottom: "1px solid var(--line)" }}>
-        <Link href="/" className="back" style={{ textDecoration: 'none' }}>← Back to ClaimClarity</Link>
-        <Link href="/" className="primary" style={{ padding: '8px 16px', fontSize: '14px', margin: 0, textDecoration: 'none' }}>Try the demo</Link>
+    <main className="cc-shell" style={{ maxWidth: "960px", margin: "0 auto", paddingBottom: "80px" }}>
+      {/* HEADER */}
+      <header className="cc-header">
+        <Link href="/" className="cc-brand">
+          <span className="cc-brand-symbol">◈</span>
+          ClaimClarity
+        </Link>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <Link href="/" className="cc-btn cc-btn-secondary" style={{ padding: "8px 16px", fontSize: "14px" }}>
+            ← Back to App
+          </Link>
+          <Link href="/" className="cc-btn cc-btn-primary" style={{ padding: "8px 16px", fontSize: "14px" }}>
+            Try a sample
+          </Link>
+        </div>
       </header>
 
-      {/* PAGE HERO */}
-      <section className="arch-hero">
-        <p className="eyebrow">TECHNICAL ARCHITECTURE</p>
-        <h1>How ClaimClarity works</h1>
-        <p className="lead" style={{ margin: '0 auto' }}>From fragmented evidence to one explainable claim state.</p>
-        <div className="metadata">
-          <span className="demo-pill">Synthetic data</span>
-          <span className="demo-pill">No live EPFO access</span>
-          <span className="demo-pill">Gemini + deterministic rules</span>
+      {/* HERO */}
+      <section style={{ textAlign: "center", padding: "40px 0 32px" }}>
+        <p className="cc-eyebrow" style={{ justifyContent: "center" }}>
+          SYSTEM DESIGN & SPECIFICATION
+        </p>
+        <h1 style={{ fontSize: "clamp(28px, 4.5vw, 44px)", fontWeight: 800, color: "var(--cc-ink)", margin: "12px 0", letterSpacing: "-0.03em" }}>
+          How ClaimClarity works
+        </h1>
+        <p style={{ fontSize: "18px", color: "var(--cc-text-muted)", maxWidth: "640px", margin: "0 auto", lineHeight: 1.5 }}>
+          AI extracts evidence. Deterministic rules reconcile it. The citizen sees the proof.
+        </p>
+
+        <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap", marginTop: "20px" }}>
+          <span className="cc-tag">Synthetic test data</span>
+          <span className="cc-tag">No live EPFO access</span>
+          <span className="cc-tag">Deterministic state machine</span>
+          <span className="cc-tag">Auditable trace</span>
         </div>
       </section>
 
-      {/* MAIN ARCHITECTURE DIAGRAM */}
-      <section className="section" style={{ marginTop: '20px' }}>
-        <div className="pipeline-container horizontal">
-          {/* Node 1 */}
-          <div className="pipeline-node">
-            <span className="category">INPUT</span>
-            <h3>Citizen Evidence</h3>
-            <p>Screenshots, claim records and messages supplied by the user.</p>
-            <span className="impl">EvidenceUploader</span>
+      {/* CORE BOUNDARY PRINCIPLE */}
+      <section style={{
+        background: "var(--cc-surface)",
+        border: "1px solid var(--cc-border)",
+        borderLeft: "4px solid var(--cc-forest)",
+        borderRadius: "12px",
+        padding: "20px 24px",
+        margin: "0 0 40px"
+      }}>
+        <h3 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700, color: "var(--cc-forest)" }}>
+          THE ARCHITECTURAL BOUNDARY
+        </h3>
+        <p style={{ margin: 0, fontSize: "15px", color: "var(--cc-ink)", lineHeight: 1.5 }}>
+          Large language and vision models are exceptional at parsing messy, unstructured artifacts into typed observations.
+          However, <strong>the final claim reconciliation decision must never be generated by an LLM</strong>.
+          ClaimClarity enforces a strict separation: AI performs evidence extraction only; a pure, deterministic engine performs reconciliation.
+        </p>
+      </section>
+
+      {/* PIPELINE ARCHITECTURE DIAGRAM */}
+      <section style={{ marginBottom: "50px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <h2 style={{ fontSize: "22px", fontWeight: 700, margin: 0 }}>
+            End-to-End Reconciliation Pipeline
+          </h2>
+          <span style={{ fontSize: "13px", color: "var(--cc-text-muted)" }}>
+            Click any stage to inspect what it does & does not do
+          </span>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {ARCHITECTURE_STAGES.map((stage, idx) => {
+            const isExpanded = expandedStage === stage.id;
+            return (
+              <div
+                key={stage.id}
+                style={{
+                  background: isExpanded ? "var(--cc-surface)" : "white",
+                  border: isExpanded ? "1px solid var(--cc-forest)" : "1px solid var(--cc-border)",
+                  borderRadius: "12px",
+                  padding: "16px 20px",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  boxShadow: isExpanded ? "var(--cc-shadow-sm)" : "none"
+                }}
+                onClick={() => toggleStage(stage.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleStage(stage.id); } }}
+                aria-expanded={isExpanded}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      background: stage.category === "AI" ? "#e8effc" : stage.category === "REASONING" ? "#e6f4ea" : "#f1f3f4",
+                      color: stage.category === "AI" ? "#1a73e8" : stage.category === "REASONING" ? "var(--cc-forest)" : "#3c4043",
+                      letterSpacing: "0.05em"
+                    }}>
+                      {stage.category}
+                    </span>
+                    <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "var(--cc-ink)" }}>
+                      {stage.name}
+                    </h3>
+                  </div>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--cc-forest)" }}>
+                    {isExpanded ? "Collapse ▲" : "Inspect ▼"}
+                  </span>
+                </div>
+
+                <p style={{ margin: "8px 0 0", fontSize: "14px", color: "var(--cc-text-muted)", lineHeight: 1.4 }}>
+                  {stage.summary}
+                </p>
+
+                {isExpanded && (
+                  <div style={{
+                    marginTop: "16px",
+                    paddingTop: "16px",
+                    borderTop: "1px solid var(--cc-border)",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: "20px"
+                  }}>
+                    <div style={{ background: "#f8fdf9", padding: "14px", borderRadius: "8px", border: "1px solid #d2ecd9" }}>
+                      <h4 style={{ margin: "0 0 10px", fontSize: "13px", color: "var(--cc-forest)", fontWeight: 700, letterSpacing: "0.04em" }}>
+                        ✓ WHAT IT DOES
+                      </h4>
+                      <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--cc-ink)", lineHeight: 1.6 }}>
+                        {stage.does.map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div style={{ background: "#fcf8f8", padding: "14px", borderRadius: "8px", border: "1px solid #f2d6d6" }}>
+                      <h4 style={{ margin: "0 0 10px", fontSize: "13px", color: "#8c3526", fontWeight: 700, letterSpacing: "0.04em" }}>
+                        ✕ WHAT IT DOES NOT DO
+                      </h4>
+                      <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px", color: "var(--cc-ink)", lineHeight: 1.6 }}>
+                        {stage.doesNot.map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* WHY THIS ARCHITECTURE? */}
+      <section style={{
+        background: "white",
+        border: "1px solid var(--cc-border)",
+        borderRadius: "16px",
+        padding: "32px",
+        marginBottom: "50px"
+      }}>
+        <h2 style={{ fontSize: "22px", fontWeight: 800, margin: "0 0 12px", color: "var(--cc-ink)" }}>
+          WHY THIS ARCHITECTURE?
+        </h2>
+        <p style={{ fontSize: "16px", lineHeight: 1.6, color: "var(--cc-ink)", margin: "0 0 20px" }}>
+          LLMs are useful for turning messy evidence into structured observations.
+          The final reconciliation decision remains deterministic and auditable.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "20px" }}>
+          <div style={{ padding: "16px", background: "var(--cc-surface)", borderRadius: "10px", border: "1px solid var(--cc-border)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: "15px", fontWeight: 700 }}>1. Zero Decision Hallucination</h4>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--cc-text-muted)", lineHeight: 1.5 }}>
+              By restricting generative models to extraction, the system is mathematically incapable of hallucinating a settled or credited claim status that is not supported by chronological evidence.
+            </p>
           </div>
-
-          <div className="pipeline-connector"><div className="arrow-down"></div></div>
-
-          {/* Node 2 */}
-          <div className="pipeline-node">
-            <span className="category">FRONTEND</span>
-            <h3>Next.js Client</h3>
-            <p>Passes evidence and triggers the server-side analysis boundary.</p>
-            <span className="impl">app/page.tsx</span>
+          <div style={{ padding: "16px", background: "var(--cc-surface)", borderRadius: "10px", border: "1px solid var(--cc-border)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: "15px", fontWeight: 700 }}>2. Complete Grievance Auditability</h4>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--cc-text-muted)", lineHeight: 1.5 }}>
+              Every output produces a deterministic audit trace of fired rules, chronological ordering, and identifier checks. If a citizen files a grievance, the exact proof chain can be reproduced.
+            </p>
           </div>
+          <div style={{ padding: "16px", background: "var(--cc-surface)", borderRadius: "10px", border: "1px solid var(--cc-border)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: "15px", fontWeight: 700 }}>3. Safe Refusal by Design</h4>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--cc-text-muted)", lineHeight: 1.5 }}>
+              When evidence is missing or fundamentally incompatible, the engine explicitly outputs <code>UNKNOWN</code> or <code>CONFLICT</code> instead of generating plausible-sounding but dangerous advice.
+            </p>
+          </div>
+        </div>
+      </section>
 
-          <div className="pipeline-connector"><div className="arrow-down"></div></div>
+      {/* TANGIBLE EXAMPLE SECTION */}
+      <section style={{
+        background: "#faf9f6",
+        border: "1px solid var(--cc-border)",
+        borderRadius: "16px",
+        padding: "32px",
+        marginBottom: "50px"
+      }}>
+        <p className="cc-eyebrow" style={{ color: "var(--cc-forest)" }}>CONCRETE EXAMPLE WALKTHROUGH</p>
+        <h2 style={{ fontSize: "22px", fontWeight: 800, margin: "8px 0 16px", color: "var(--cc-ink)" }}>
+          How a contradictory claim is resolved
+        </h2>
 
-          {/* AI GROUP */}
-          <div className="pipeline-group" data-type="ai">
-            <div className="pipeline-node" style={{ width: '100%', border: '1px solid #c4d7f5' }}>
-              <span className="category" style={{ color: '#2e6bc2' }}>AI</span>
-              <h3>Gemini Extraction</h3>
-              <p>Extracts only facts explicitly present in supplied evidence.</p>
-              <span className="impl">lib/ai/extractEvidence.ts</span>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "16px",
+          alignItems: "stretch"
+        }}>
+          {/* Step 1: Input Evidence */}
+          <div style={{ background: "white", padding: "16px", borderRadius: "10px", border: "1px solid var(--cc-border)" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--cc-text-muted)" }}>1. RAW EVIDENCE</span>
+            <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ fontSize: "13px", padding: "8px", background: "var(--cc-surface)", borderRadius: "6px" }}>
+                <b>Portal</b> (03 Jul)<br />
+                <span style={{ color: "#8c4e0b" }}>Processing</span>
+              </div>
+              <div style={{ fontSize: "13px", padding: "8px", background: "var(--cc-surface)", borderRadius: "6px" }}>
+                <b>SMS</b> (05 Jul)<br />
+                <span style={{ color: "#8c4e0b" }}>Processing</span>
+              </div>
+              <div style={{ fontSize: "13px", padding: "8px", background: "#e8f5ed", borderRadius: "6px" }}>
+                <b>Passbook</b> (13 Jul)<br />
+                <span style={{ color: "var(--cc-forest)", fontWeight: 700 }}>₹45,000 credited</span>
+              </div>
             </div>
           </div>
 
-          <div className="pipeline-connector">
-            <span className="label">STRUCTURED EVIDENCE</span>
-            <div className="arrow-down"></div>
-          </div>
-
-          {/* LOGIC GROUP */}
-          <div className="pipeline-group" data-type="logic" style={{ flexDirection: 'column' }}>
-            <div className="pipeline-node" style={{ border: '1px solid #cce3d8' }}>
-              <span className="category" style={{ color: 'var(--green)' }}>VALIDATION</span>
-              <h3>Zod Validation</h3>
-              <p>Reject malformed model output strictly at runtime.</p>
-              <span className="impl">lib/schemas</span>
-            </div>
-
-            <div className="pipeline-connector" style={{ minHeight: '30px' }}><div className="arrow-down"></div></div>
-
-            <div className="pipeline-node" style={{ border: '1px solid #cce3d8' }}>
-              <span className="category" style={{ color: 'var(--green)' }}>CORE LOGIC</span>
-              <h3>Deterministic Engine</h3>
-              <p>Match artifacts, build chronology, detect conflicts & calculate confidence.</p>
-              <span className="impl">lib/reconciliation/reconcileClaim.ts</span>
+          {/* Step 2: Reconciliation */}
+          <div style={{ background: "white", padding: "16px", borderRadius: "10px", border: "1px solid var(--cc-border)" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--cc-forest)" }}>2. RECONCILIATION</span>
+            <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px", fontSize: "12px", color: "var(--cc-text-muted)" }}>
+              <div style={{ padding: "8px", background: "var(--cc-surface)", borderRadius: "6px" }}>
+                ✓ <b>Chronology:</b> 13 Jul &gt; 05 Jul &gt; 03 Jul
+              </div>
+              <div style={{ padding: "8px", background: "var(--cc-surface)", borderRadius: "6px" }}>
+                ✓ <b>Status precedence:</b> Later financial credit supersedes earlier in-flight processing
+              </div>
+              <div style={{ padding: "8px", background: "var(--cc-surface)", borderRadius: "6px" }}>
+                ✓ <b>Tagged:</b> Portal & SMS marked <em>Superseded</em>
+              </div>
             </div>
           </div>
 
-          <div className="pipeline-connector">
-            <span className="label">RECONCILIATION RESULT</span>
-            <div className="arrow-down"></div>
-          </div>
-
-          {/* Node Output */}
-          <div className="pipeline-node">
-            <span className="category">OUTPUT</span>
-            <h3>Citizen Answer</h3>
-            <p>Best-supported state, timeline, uncertainty and safe next action.</p>
-            <span className="impl">Result View</span>
-          </div>
-        </div>
-
-        <div className="boundary-label">AI does not decide the final state.</div>
-      </section>
-
-      {/* REQUEST FLOW */}
-      <section className="section">
-        <h2>What happens when you click Analyze?</h2>
-        <div className="journey-container">
-          <div className="journey-step">
-            <div className="num">01</div>
-            <div><h4>Collect</h4><p>Citizen supplies evidence.</p></div>
-          </div>
-          <div className="journey-step">
-            <div className="num">02</div>
-            <div><h4>Extract</h4><p>Gemini converts messy input into structured observations.</p></div>
-          </div>
-          <div className="journey-step">
-            <div className="num">03</div>
-            <div><h4>Validate</h4><p>Zod rejects malformed output.</p></div>
-          </div>
-          <div className="journey-step">
-            <div className="num">04</div>
-            <div><h4>Reconcile</h4><p>Deterministic rules detect chronology, conflicts and stale signals.</p></div>
-          </div>
-          <div className="journey-step">
-            <div className="num">05</div>
-            <div><h4>Explain</h4><p>ClaimClarity presents the best-supported state and next safe action.</p></div>
-          </div>
-        </div>
-      </section>
-
-      {/* REAL DATA EXAMPLE */}
-      <section className="section">
-        <h2>See one claim move through the system</h2>
-        <div className="data-flow pipeline-container horizontal" style={{ maxWidth: '100%', margin: 0 }}>
-          <div className="pipeline-node">
-            <span className="category">INPUT</span>
-            <article className="evidence" style={{ padding: '8px', marginBottom: '4px' }}><div><b>New tracker</b></div><strong>Claim Submitted</strong></article>
-            <article className="evidence" style={{ padding: '8px', marginBottom: '4px' }}><div><b>Old tracker</b></div><strong>Under Process</strong></article>
-            <article className="evidence" style={{ padding: '8px', marginBottom: '4px' }}><div><b>Passbook</b></div><strong>Pending</strong></article>
-            <article className="evidence" style={{ padding: '8px', marginBottom: '4px' }}><div><b>SMS</b></div><strong>Under Process</strong></article>
-          </div>
-          <div className="pipeline-connector"><div className="arrow-down"></div></div>
-          <div className="pipeline-node">
-            <span className="category">STRUCTURE (GEMINI)</span>
-            <pre style={{ margin: 0, padding: '10px', fontSize: '11px', background: '#f7f6ef', color: 'var(--ink)' }}>
-{`[
-  {
-    "source": "new_tracker",
-    "status": "Claim Submitted",
-    "date": "2026-07-03"
-  },
-  // ... 3 more facts
-]`}
-            </pre>
-          </div>
-          <div className="pipeline-connector"><div className="arrow-down"></div></div>
-          <div className="pipeline-node">
-            <span className="category">REASON (LOGIC)</span>
-            <ul style={{ margin: 0, paddingLeft: '15px', fontSize: '13px', color: 'var(--muted)' }}>
-              <li>4 observations validated</li>
-              <li>Conflict detected</li>
-              <li>Chronology built</li>
-              <li>Confidence = Medium</li>
-            </ul>
-          </div>
-          <div className="pipeline-connector"><div className="arrow-down"></div></div>
-          <div className="pipeline-node" style={{ borderLeft: '4px solid var(--green)' }}>
-            <span className="category">ANSWER</span>
-            <p style={{ margin: '0 0 5px', fontSize: '13px' }}><b>Best-supported state:</b></p>
-            <h3 style={{ margin: '0 0 10px' }}>UNDER PROCESS</h3>
-            <p style={{ margin: '0 0 5px', fontSize: '13px' }}><b>Recommended:</b></p>
-            <div className="action" style={{ padding: '8px', fontSize: '12px' }}>WAIT / MONITOR</div>
-          </div>
-        </div>
-      </section>
-
-      {/* AI VS DETERMINISTIC */}
-      <section className="section" style={{ background: '#14231e', margin: '60px -20px', padding: '60px 20px', borderRadius: '24px', color: 'white' }}>
-        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <h1 style={{ color: 'var(--mint)', margin: 0, fontSize: 'clamp(28px, 5vw, 42px)' }}>AI handles extraction.<br/>Rules handle the decision.</h1>
-        </div>
-        <div className="comparison-grid">
-          <div className="comp-card" style={{ background: '#1c312a', borderColor: '#27433a', color: 'white' }}>
-            <span className="demo-pill" style={{ background: '#2e6bc2', color: 'white', marginBottom: '15px', display: 'inline-block' }}>AI INTERPRETATION</span>
-            <h2 style={{ color: 'white' }}>Gemini</h2>
-            <ul style={{ color: '#dff4e7' }}>
-              <li><span className="check">✓</span> Extract facts</li>
-              <li><span className="check">✓</span> Read messy evidence</li>
-              <li><span className="check">✓</span> Interpret screenshots/text</li>
-              <li><span className="check">✓</span> Identify ambiguity</li>
-            </ul>
-            <ul style={{ color: '#a5b5ab', marginTop: '20px', borderTop: '1px solid #27433a', paddingTop: '20px' }}>
-              <li><span className="cross">✕</span> Decide official status</li>
-              <li><span className="cross">✕</span> Invent missing facts</li>
-              <li><span className="cross">✕</span> Choose final action</li>
-            </ul>
-          </div>
-          <div className="comp-card" style={{ background: '#1c312a', borderColor: '#27433a', color: 'white' }}>
-            <span className="demo-pill" style={{ marginBottom: '15px', display: 'inline-block' }}>DETERMINISTIC LOGIC</span>
-            <h2 style={{ color: 'white' }}>Reconciliation Engine</h2>
-            <ul style={{ color: '#dff4e7' }}>
-              <li><span className="check">✓</span> Normalize states</li>
-              <li><span className="check">✓</span> Build chronology</li>
-              <li><span className="check">✓</span> Detect conflicts</li>
-              <li><span className="check">✓</span> Detect stale signals</li>
-              <li><span className="check">✓</span> Calculate confidence</li>
-              <li><span className="check">✓</span> Choose safe action</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* DEMO MODE VS GEMINI MODE */}
-      <section className="section">
-        <h2>Resilience Architecture</h2>
-        <div className="branch-container">
-          <div className="branch">
-            <div className="branch-title">DEMO MODE</div>
-            <div className="pipeline-container">
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center' }}>Synthetic facts</div>
-              <div className="pipeline-connector" style={{ minHeight: '20px' }}><div className="arrow-down"></div></div>
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center' }}>Reconciliation engine</div>
-              <div className="pipeline-connector" style={{ minHeight: '20px' }}><div className="arrow-down"></div></div>
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center', borderLeft: '4px solid var(--green)' }}>Result</div>
-            </div>
-            <p className="fine" style={{ textAlign: 'center' }}>No API key required.</p>
-          </div>
-          <div className="branch">
-            <div className="branch-title">GEMINI MODE</div>
-            <div className="pipeline-container">
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center' }}>Synthetic/user evidence</div>
-              <div className="pipeline-connector" style={{ minHeight: '20px' }}><div className="arrow-down"></div></div>
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center', borderColor: '#c4d7f5' }}>Gemini</div>
-              <div className="pipeline-connector" style={{ minHeight: '20px' }}><div className="arrow-down"></div></div>
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center' }}>Validation</div>
-              <div className="pipeline-connector" style={{ minHeight: '20px' }}><div className="arrow-down"></div></div>
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center' }}>Reconciliation</div>
-              <div className="pipeline-connector" style={{ minHeight: '20px' }}><div className="arrow-down"></div></div>
-              <div className="pipeline-node" style={{ padding: '10px', textAlign: 'center', borderLeft: '4px solid var(--green)' }}>Result</div>
-            </div>
-            <p className="fine" style={{ textAlign: 'center' }}>GEMINI_API_KEY available server-side.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* INTERACTIVE TRACE */}
-      <section className="section" style={{ padding: '40px', background: '#f7f6ef', borderRadius: '16px', border: '1px solid var(--line)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', marginBottom: '30px' }}>
-          <h2 style={{ margin: 0 }}>Trace this claim</h2>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="secondary" onClick={() => startTrace(false)} disabled={isTracing} style={{ margin: 0, fontSize: '14px', padding: '10px 15px' }}>Run Demo pipeline</button>
-            <button className="primary" onClick={() => startTrace(true)} disabled={isTracing} style={{ margin: 0, fontSize: '14px', padding: '10px 15px' }}>Run Gemini pipeline</button>
-          </div>
-        </div>
-
-        <div className="pipeline-container horizontal">
-          <div className={getNodeClass(1)}>
-            <span className="category">01</span>
-            <h3>Evidence</h3>
-            {pipelineStep >= 1 && <span className="status-indicator" style={{ color: 'var(--green)' }}>✓</span>}
-          </div>
-          <div className={getConnectorClass(2)}><div className="arrow-down"></div></div>
-          
-          <div className={getNodeClass(2)}>
-            <span className="category">02</span>
-            <h3>{geminiMode ? "Gemini" : "Bypass (Demo)"}</h3>
-            {pipelineStep >= 2 && <span className="status-indicator" style={{ color: 'var(--green)' }}>✓</span>}
-          </div>
-          <div className={getConnectorClass(3)}><div className="arrow-down"></div></div>
-
-          <div className={getNodeClass(3)}>
-            <span className="category">03</span>
-            <h3>Validation</h3>
-            {pipelineStep >= 3 && <span className="status-indicator" style={{ color: 'var(--green)' }}>✓</span>}
-          </div>
-          <div className={getConnectorClass(4)}><div className="arrow-down"></div></div>
-
-          <div className={getNodeClass(4)}>
-            <span className="category">04</span>
-            <h3>Reconciliation</h3>
-            {pipelineStep >= 4 && <span className="status-indicator" style={{ color: 'var(--green)' }}>✓</span>}
-          </div>
-          <div className={getConnectorClass(5)}><div className="arrow-down"></div></div>
-
-          <div className={getNodeClass(5)} style={{ borderLeft: pipelineStep >= 5 ? '4px solid var(--green)' : '2px solid transparent' }}>
-            <span className="category">05</span>
-            <h3>Result</h3>
-            {pipelineStep >= 5 && <span className="status-indicator" style={{ color: 'var(--green)' }}>✓</span>}
-          </div>
-        </div>
-
-        {pipelineStep === 5 && (
-          <div style={{ marginTop: '30px', textAlign: 'center', animation: 'fade-slide-in 0.5s ease' }}>
-            <p className="eyebrow">PIPELINE COMPLETE</p>
-            <div style={{ display: 'inline-block', background: 'white', padding: '15px 30px', borderRadius: '12px', border: '1px solid var(--green)' }}>
-              <p style={{ margin: '0 0 5px' }}>Best-supported state: <b>Under Process</b></p>
-              <p style={{ margin: 0 }}>Confidence: <span className="badge medium" style={{marginLeft: '5px'}}>Medium</span></p>
+          {/* Step 3: Final Supported State */}
+          <div style={{ background: "white", padding: "16px", borderRadius: "10px", border: "2px solid var(--cc-forest)" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--cc-forest)" }}>3. CITIZEN ANSWER</span>
+            <div style={{ marginTop: "12px" }}>
+              <div style={{ fontSize: "12px", color: "var(--cc-text-muted)" }}>Supported state:</div>
+              <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--cc-forest)", margin: "4px 0 8px" }}>
+                CREDITED
+              </div>
+              <p style={{ margin: 0, fontSize: "12px", color: "var(--cc-ink)", lineHeight: 1.4 }}>
+                <strong>Why:</strong> Later financial evidence supports a completed outcome. Older portal records reflect delayed sync.
+              </p>
+              <div style={{ marginTop: "10px", padding: "6px 8px", background: "#fef9ee", borderRadius: "6px", fontSize: "11px", color: "#8c4e0b" }}>
+                <strong>Action:</strong> Check bank account; do not reapply.
+              </div>
             </div>
           </div>
-        )}
-      </section>
-
-      {/* IMPLEMENTATION MAP */}
-      <section className="section">
-        <h2 style={{ textAlign: 'center' }}>Implementation Map</h2>
-        <div className="impl-map">
-          <div className="impl-item">
-            <div className="module">Frontend</div>
-            <div className="file">app/page.tsx</div>
-            <p className="desc">Citizen landing experience.</p>
-          </div>
-          <div className="impl-item">
-            <div className="module">API</div>
-            <div className="file">app/api/analyze/route.ts</div>
-            <p className="desc">Analysis orchestration.</p>
-          </div>
-          <div className="impl-item">
-            <div className="module">AI</div>
-            <div className="file">lib/ai/extractEvidence.ts</div>
-            <p className="desc">Gemini extraction wrapper.</p>
-          </div>
-          <div className="impl-item">
-            <div className="module">Validation</div>
-            <div className="file">lib/schemas/index.ts</div>
-            <p className="desc">Zod schemas.</p>
-          </div>
-          <div className="impl-item">
-            <div className="module">Rules</div>
-            <div className="file">lib/reconciliation/reconcileClaim.ts</div>
-            <p className="desc">Deterministic engine.</p>
-          </div>
-          <div className="impl-item">
-            <div className="module">Synthetic data</div>
-            <div className="file">lib/data/sampleClaims.ts</div>
-            <p className="desc">Precomputed demo observations.</p>
-          </div>
-          <div className="impl-item">
-            <div className="module">Tests</div>
-            <div className="file">tests/</div>
-            <p className="desc">Automated vitest/playwright suites.</p>
-          </div>
         </div>
       </section>
 
-      {/* SAFETY BOUNDARY */}
-      <section className="section">
-        <div className="safety-strip">
-          <div className="safety-side no">
-            <h3 style={{ color: '#8c3526' }}>ClaimClarity does NOT:</h3>
-            <ul>
-              <li><span className="cross" style={{ color: '#8c3526', marginRight: '8px' }}>✕</span> Live EPFO access</li>
-              <li><span className="cross" style={{ color: '#8c3526', marginRight: '8px' }}>✕</span> EPFO mutation</li>
-              <li><span className="cross" style={{ color: '#8c3526', marginRight: '8px' }}>✕</span> EPFO authentication</li>
-              <li><span className="cross" style={{ color: '#8c3526', marginRight: '8px' }}>✕</span> Official status verification</li>
-              <li><span className="cross" style={{ color: '#8c3526', marginRight: '8px' }}>✕</span> Real citizen credentials</li>
-            </ul>
-          </div>
-          <div className="safety-side yes">
-            <h3 style={{ color: 'var(--green)' }}>ClaimClarity DOES:</h3>
-            <ul>
-              <li><span className="check" style={{ color: 'var(--green)', marginRight: '8px' }}>✓</span> Reconcile supplied evidence</li>
-              <li><span className="check" style={{ color: 'var(--green)', marginRight: '8px' }}>✓</span> Explain conflicts</li>
-              <li><span className="check" style={{ color: 'var(--green)', marginRight: '8px' }}>✓</span> Show uncertainty</li>
-              <li><span className="check" style={{ color: 'var(--green)', marginRight: '8px' }}>✓</span> Provide prototype-safe next action</li>
-            </ul>
-          </div>
-        </div>
+      {/* TECHNICAL DISCLOSURE & SPECIFICATION FOOTER */}
+      <section style={{
+        padding: "24px",
+        borderTop: "1px solid var(--cc-border)",
+        color: "var(--cc-text-muted)",
+        fontSize: "13px",
+        lineHeight: 1.6
+      }}>
+        <h4 style={{ margin: "0 0 6px", fontSize: "13px", fontWeight: 700, color: "var(--cc-ink)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          Technical Disclosure & Implementation Notes
+        </h4>
+        <p style={{ margin: "0 0 10px" }}>
+          Evidence extraction uses Google Gemini 2.5 Flash with structured output schemas (JSON Mode + Zod) on the backend.
+          The reconciliation engine is implemented in pure TypeScript without external model dependencies, guaranteeing deterministic execution across serverless environments.
+        </p>
+        <p style={{ margin: 0 }}>
+          ClaimClarity is an independent public-utility prototype developed for civic decision support. It is not affiliated with, endorsed by, or integrated with the Employees&apos; Provident Fund Organisation (EPFO).
+        </p>
       </section>
-
-      {/* BOTTOM CTA */}
-      <section className="section" style={{ textAlign: 'center', margin: '80px 0 40px' }}>
-        <h1>See it in action</h1>
-        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '20px' }}>
-          <Link href="/" className="primary" style={{ textDecoration: 'none' }}>Try ClaimClarity <span>→</span></Link>
-          <button className="secondary" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Back to architecture</button>
-        </div>
-      </section>
-
     </main>
   );
 }

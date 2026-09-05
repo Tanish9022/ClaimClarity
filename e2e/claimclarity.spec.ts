@@ -1,55 +1,65 @@
 import { test, expect } from "@playwright/test";
 
-test("public sample path reconciles Case A and renders citizen-facing result", async ({ page }) => {
+test("public sample path reconciles Scenario 1 and renders 4-question result", async ({ page }) => {
   test.setTimeout(120000);
   await page.goto("/");
-  await page.getByRole("button", { name: /try sample scenarios/i }).click();
+  
+  // 1. Landing page CTA
+  await page.getByRole("button", { name: /try a sample claim/i }).first().click();
 
-  // Case A analysis
-  await page.getByRole("button", { name: /analyze this claim/i }).click();
+  // 2. Select Scenario 1
+  await page.getByRole("button", { name: /Why do my records disagree\?/i }).click();
 
-  // 1. Answer headline
+  // 3. Evidence review screen
+  await expect(page.getByRole("heading", { name: /YOUR EVIDENCE/i })).toBeVisible();
+  await page.getByRole("button", { name: /reconcile these records/i }).click();
+
+  // 4. Answer headline
   await expect(page.getByRole("heading", { name: /Your money appears credited/i })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(/High confidence/i)).toBeVisible();
 
-  // 2. Sections: Why this answer, Proof / Ledger, Timeline, Action, Don't do this yet
-  await expect(page.getByText("Why this answer?")).toBeVisible();
-  await expect(page.getByText("Evidence Ledger (Proof)")).toBeVisible();
-  await expect(page.getByText("Chronological Timeline")).toBeVisible();
-  await expect(page.getByText("What should I do?")).toBeVisible();
-  await expect(page.getByText("Don’t do this yet")).toBeVisible();
+  // 5. Core sections: WHY, PROOF (Ledger), ACTION, DON'T DO THIS YET, WHY CREDITED
+  await expect(page.getByText(/Bank credit record/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /WHY WE REACHED THIS ANSWER/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /WHAT SHOULD I DO\?/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /DON'T DO THIS YET/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /WHY CREDITED INSTEAD OF/i })).toBeVisible();
 
-  // 3. Trace toggle
-  await page.getByRole("button", { name: /show deterministic reconciliation trace/i }).click();
+  // 6. Technical audit trace toggle
+  await page.getByRole("button", { name: /see why we reached this answer/i }).click();
+  await expect(page.getByText("Identity ✓")).toBeVisible();
   await expect(page.getByText("winningStateRationale")).toBeVisible();
 
-  // 4. Reset demo
+  // 7. Reset demo
   await page.getByRole("button", { name: /reset demo/i }).click();
-  await expect(page.getByRole("button", { name: /try sample scenarios/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /try a sample claim/i }).first()).toBeVisible();
 });
 
-test("refuses to guess on vague evidence (Case C)", async ({ page }) => {
+test("refuses to guess on vague evidence (Scenario 3)", async ({ page }) => {
   test.setTimeout(120000);
   await page.goto("/");
-  await page.getByRole("button", { name: /try sample scenarios/i }).click();
+  await page.getByRole("button", { name: /try a sample claim/i }).first().click();
 
-  // Select Case C
-  await page.getByRole("button", { name: /C: Vague Signal/i }).click();
-  await page.getByRole("button", { name: /analyze this claim/i }).click();
+  // Select Scenario 3: "Can you tell what happened?"
+  await page.getByRole("button", { name: /Can you tell what happened\?/i }).click();
+  await page.getByRole("button", { name: /reconcile these records/i }).click();
 
   await expect(page.getByRole("heading", { name: /We don't have enough information yet/i })).toBeVisible({ timeout: 60000 });
-  await expect(page.getByText("Missing information")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /WHAT'S MISSING\?/i })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: /Claim ID/i })).toBeVisible();
 });
 
-test("detects adversarial conflict between rejection and credit", async ({ page }) => {
+test("detects conflict between rejection and credit (Adversarial)", async ({ page }) => {
   test.setTimeout(120000);
   await page.goto("/");
-  await page.getByRole("button", { name: /try sample scenarios/i }).click();
+  await page.getByRole("button", { name: /try a sample claim/i }).first().click();
 
-  // Select Conflict case
-  await page.getByRole("button", { name: /Conflict \(Adversarial\)/i }).click();
-  await page.getByRole("button", { name: /analyze this claim/i }).click();
+  // Select Conflict case: "Two records give incompatible outcomes"
+  await page.getByRole("button", { name: /Two records give incompatible outcomes/i }).click();
+  await page.getByRole("button", { name: /reconcile these records/i }).click();
 
-  await expect(page.getByRole("heading", { name: /Conflict detected/i })).toBeVisible({ timeout: 60000 });
-  await expect(page.getByText("WHAT WE KNOW:")).toBeVisible();
-  await expect(page.getByText("WHAT WE CANNOT CONFIRM:")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /We found a conflict/i })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole("heading", { name: /WHAT WE KNOW/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /WHAT WE CANNOT CONFIRM/i })).toBeVisible();
+  await expect(page.getByText(/Verify the official claim outcome directly through official records/i)).toBeVisible();
 });
