@@ -1,10 +1,10 @@
 <div align="center">
   
   # 🏛️ ClaimClarity
-  **One claim. One clear state.**
+  **Many signals. One evidence-backed answer.**
 
   <p align="center">
-    ClaimClarity is a focused civic-tech prototype for reconciling fragmented, synthetic EPFO claim evidence. It is not a portal, tracker, calculator, or chatbot. It is a single source of truth for confused citizens.
+    ClaimClarity is a focused civic-tech prototype for reconciling fragmented, synthetic EPFO claim evidence. It is not a portal, tracker, calculator, or chatbot. It provides evidence-backed reconciliation for citizens facing contradictory records.
   </p>
 
   <br />
@@ -19,60 +19,75 @@
 <hr />
 
 ## 🚨 The Problem
-After submitting a claim, a citizen may see different signals across multiple government systems:
-* The new unified portal
-* The legacy tracker
-* SMS updates
-* Digital Passbook
+After submitting an EPFO claim, a citizen often encounters different and conflicting signals across multiple channels:
+* The unified member portal
+* The legacy tracker portal
+* SMS notifications
+* Digital passbook records
+* Bank account credits
 
-**ClaimClarity** takes this conflicting evidence relating to one claim, reconstructs a chronological timeline, identifies conflicts or stale signals, and presents a **best-supported state** along with **one safe next action**. It guarantees absolute safety by always using a *"Based on the evidence provided"* framing.
+When one record says "Under Process", another says "Settled", and an SMS says "Pending", citizens don't know what to trust or whether to file a duplicate claim.
+
+**ClaimClarity** resolves this ambiguity through **Evidence Reconciliation**:
+1. AI (Gemini) extracts explicit facts into a strictly typed evidence model without deciding the final state.
+2. A pure TypeScript deterministic engine reconciles identity, chronology, semantics, terminal outcomes, stale observations, and contradictions.
+3. The UI presents the answer first (**ANSWER &rarr; WHY &rarr; PROOF &rarr; ACTION**) with an auditable deterministic trace.
+
+> **Safety Policy:** ClaimClarity is designed to avoid unsupported conclusions by separating AI evidence extraction from deterministic reconciliation and explicitly surfacing uncertainty. All evaluations are framed strictly as *"Based on the evidence provided"*. It does not access live government servers or claim official verification.
 
 ---
 
 ## 🚀 Core Journey
 
-The application provides a seamless, unauthenticated experience designed for hackathon judges:
+The application provides a seamless, unauthenticated experience designed for rapid verification:
 
 1. **Open the landing page** 
-2. Click **Try a sample claim** 
-3. Review the provided synthetic artifacts (images/SMS texts)
+2. Click **Try sample scenarios** 
+3. Review the provided synthetic artifacts (tracker status, SMS notices, bank/passbook entries)
 4. Click **Analyze this claim** 
-5. See the reconciliation result and timeline
-6. Click **Reset demo** to try another case. 
+5. See the citizen-facing result:
+   - **What happened?** (Current reconciled claim state)
+   - **Why?** (Winning state rationale & why records look confusing)
+   - **Proof** (Evidence Ledger with dates, channels, amounts, and stale observation tags)
+   - **What should I do?** (One safe next action)
+   - **Don't do this yet** (Actionable warning against unsafe duplicate filings)
+   - **Reconciliation Trace** (Expandable deterministic audit trace showing competing states evaluated)
+6. Click **Reset demo** to try another scenario.
 
-There are three built-in synthetic cases: 
-* 🔴 Conflicting processing signals
-* 🟢 Later settlement/credit with a stale signal
-* 🟡 Insufficient evidence
+### Built-in Scenarios:
+* 🟢 **Scenario A (Records Disagree):** Portals show "Under Process", but a newer passbook record shows credit &rarr; **CREDITED** (earlier processing records flagged as superseded).
+* 🟢 **Scenario B (Paid vs Processing):** Full chronological progression (Submitted &rarr; Processing &rarr; Settled &rarr; Credited) &rarr; **CREDITED**.
+* 🟡 **Scenario C (Vague Signal):** Vague undated SMS without claim ID &rarr; **Honest UNKNOWN refusal** with missing information checklist.
+* 🔴 **Scenario Conflict (Adversarial):** Rejection notice + Bank credit record &rarr; **CONFLICT DETECTED** (refusal to force a state; clearly surfaces what is known vs unconfirmed).
 
 ---
 
 ## 🏗️ System Architecture
 
-The core design principle of ClaimClarity is absolute safety: **AI handles extraction, while Deterministic Rules handle the decision.** 
+The core architecture separates extraction from decision-making: **AI extracts facts; deterministic rules reconcile them.**
 
 ```mermaid
 graph TD
-    %% Styling
     classDef citizen fill:#1e293b,stroke:#cbd5e1,stroke-width:2px,color:#f8fafc
     classDef frontend fill:#0ea5e9,stroke:#0284c7,stroke-width:2px,color:#ffffff
     classDef ai fill:#8b5cf6,stroke:#6d28d9,stroke-width:2px,color:#ffffff
     classDef logic fill:#10b981,stroke:#059669,stroke-width:2px,color:#ffffff
     
-    A([Citizen Uploads Evidence]):::citizen --> B[Next.js Frontend Client]:::frontend
+    A([Citizen Supplies Evidence]):::citizen --> B[Next.js Frontend Client]:::frontend
     
-    subgraph "AI Extraction Layer (Unstructured -> Structured)"
+    subgraph "AI Extraction Layer (Facts Only - No Decision)"
         B --> |POST /api/analyze| C{Gemini API}:::ai
-        C --> |Extracts Raw Facts| D[Zod Validation]:::ai
+        C --> |Extracts Typed Facts| D[Zod Validation]:::ai
     end
     
-    subgraph "Deterministic Logic Layer (Safe & Rule-Based)"
-        D --> |Strictly Typed Facts| E[Reconciliation Engine]:::logic
-        E --> |Build Chronology| F[Conflict Detection]:::logic
-        F --> |Apply Safety Rules| G[Final State Determination]:::logic
+    subgraph "Deterministic Reconciliation Engine (Auditable TypeScript)"
+        D --> |Typed Observations| E[Identity Reconciliation]:::logic
+        E --> |Chronological Sort| F[Event Semantics & Precedence]:::logic
+        F --> |Stale Detection & Conflict Check| G[Sufficiency Floor & Quality Calibration]:::logic
+        G --> |Structured Output + Audit Trace| H[Reconciliation Trace Generator]:::logic
     end
     
-    G --> H([Clear Result UI]):::citizen
+    H --> I([Citizen Answer: What Happened &bull; Why &bull; Proof &bull; Action]):::citizen
 ```
 
 ---
@@ -81,16 +96,16 @@ graph TD
 
 ### Frontend
 - **Framework:** Next.js 14 (App Router)
-- **Styling:** Tailwind CSS + Custom CSS Grid/Flexbox
-- **Components:** Headless UI & Native HTML5
+- **Styling:** Vanilla CSS design tokens + responsive layouts
+- **Accessibility:** Accessible semantic HTML, high-contrast badges, mobile-responsive layout readable in under 5 seconds
 
 ### Backend & AI
-- **LLM:** Google Gemini 1.5 Flash (via `@google/genai`)
-- **Validation:** Zod (Strict schema enforcement)
-- **Logic Engine:** Custom deterministic TypeScript reconciler (`lib/reconciliation/reconcileClaim.ts`)
+- **LLM:** Google Gemini API (via `@google/genai`) for structured factual extraction only
+- **Validation:** Zod (Strict schema enforcement on artifacts, events, conflicts, and traces)
+- **Deterministic Reconciler:** Pure TypeScript rule engine (`lib/reconciliation/reconcileClaim.ts`)
 
 ### Resilience & Demo Mode
-If the Gemini API is missing or unavailable, the system automatically falls back to a **Demo Mode**. It bypasses the AI layer and routes synthetic pre-computed facts directly into the deterministic engine, guaranteeing the application never goes down during a live pitch.
+If the Gemini API key is not configured, the system seamlessly operates in **Demo Mode**, routing pre-structured synthetic records directly into the deterministic reconciliation engine.
 
 ---
 
@@ -107,13 +122,17 @@ cd ClaimClarity
 npm install
 ```
 
-3. **Set up Environment Variables**
-Create a `.env` file in the root directory:
-```env
-GEMINI_API_KEY=your_google_gemini_api_key_here
+3. **Run Unit Tests**
+```bash
+npm test
 ```
 
-4. **Start the Development Server**
+4. **Run End-to-End Tests**
+```bash
+npx playwright test
+```
+
+5. **Start Development Server**
 ```bash
 npm run dev
 ```
@@ -122,5 +141,5 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 ---
 
 <div align="center">
-  <i>Built with ❤️ for Civic Tech.</i>
+  <i>Independent prototype using synthetic data. Not an official EPFO service.</i>
 </div>
