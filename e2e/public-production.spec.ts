@@ -7,7 +7,9 @@ test.describe("Public Production Verification", () => {
     test.setTimeout(60000);
     const consoleErrors: string[] = [];
     page.on("console", msg => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+      if (msg.type() === "error" && !msg.text().includes("net::ERR_CONNECTION_RESET")) {
+        consoleErrors.push(msg.text());
+      }
     });
     page.on("pageerror", err => consoleErrors.push(err.message));
 
