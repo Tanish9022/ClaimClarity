@@ -156,7 +156,7 @@ Automated CI runs on every pull request targeting `main` and validates:
 - **Production Build:** Next.js production build compilation (`npm run build`)
 - **Hermetic E2E:** Playwright browser tests over sample scenarios (`npx playwright test e2e/claimclarity.spec.ts`)
 
-> **Note:** CI runs hermetically against sample scenarios without consuming external Gemini API quota or requiring secret keys. A passing CI run is the required quality gate for all merges into `main`.
+> **Note:** CI runs hermetically against sample scenarios without consuming external Open AI API quota or requiring secret keys. A passing CI run is the required quality gate for all merges into `main`.
 
 ---
 
