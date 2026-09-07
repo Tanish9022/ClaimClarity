@@ -433,11 +433,11 @@ export default function ArchitecturePage() {
           Technical Disclosure & Implementation Notes
         </h4>
         <p style={{ margin: "0 0 10px" }}>
-          Evidence extraction uses Google Gemini 2.5 Flash with structured output schemas (JSON Mode + Zod) on the backend.
+          Evidence extraction converts uploaded records into structured observations with strict schema validation (JSON Mode + Zod) on the backend.
           The reconciliation engine is implemented in pure TypeScript without external model dependencies, guaranteeing deterministic execution across serverless environments.
         </p>
         <p style={{ margin: 0 }}>
-          ClaimClarity is an independent public-utility prototype developed for civic decision support. It is not affiliated with, endorsed by, or integrated with the Employees&apos; Provident Fund Organisation (EPFO).
+          ClaimClarity is an independent public-utility service developed for civic decision support. It is not affiliated with, endorsed by, or integrated with the Employees&apos; Provident Fund Organisation (EPFO).
         </p>
       </section>
     </main>

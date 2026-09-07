@@ -140,6 +140,20 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
 
+## 🛡️ Continuous Integration & Quality Gate
+
+Automated CI runs on every pull request targeting `main` and validates:
+- **Type Safety:** TypeScript strict check (`npm run typecheck`)
+- **Code Quality:** Next.js ESLint linting (`npm run lint`)
+- **Unit & Integration Suite:** Schema integrity and deterministic reconciliation tests (`npm test`)
+- **Productization Guard:** Automated regression check ensuring citizen-facing UI remains free of internal/vendor jargon
+- **Production Build:** Next.js production build compilation (`npm run build`)
+- **Hermetic E2E:** Playwright browser tests over sample scenarios (`npx playwright test e2e/claimclarity.spec.ts`)
+
+> **Note:** CI runs hermetically against sample scenarios without consuming external Gemini API quota or requiring secret keys. A passing CI run is the required quality gate for all merges into `main`.
+
+---
+
 <div align="center">
   <i>Independent prototype using synthetic data. Not an official EPFO service.</i>
 </div>

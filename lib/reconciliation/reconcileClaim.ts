@@ -12,6 +12,10 @@ import {
   type SemanticClass,
   type Source
 } from "@/lib/schemas";
+import { findRejectionDiagnostic } from "@/lib/reconciliation/rejections";
+import { assessClaimTimings } from "@/lib/config/timings";
+import { partitionEvidence } from "@/lib/entity/formPartition";
+import { attributePayments } from "@/lib/reconciliation/attribution";
 
 export const STATUS_NORMALIZATION: Array<[RegExp, CanonicalStatus]> = [
   [/bank\s+credit|credit|credited|amount.*received/i, "CREDITED"],
@@ -67,8 +71,8 @@ function getChannelDetail(source: Source): string {
 
 export function reconcileClaim(
   rawArtifacts: Artifact[],
-  memberName: string | null,
-  analysisMode: "demo" | "gemini"
+  memberName: string | null = null,
+  analysisMode: "demo" | "gemini" = "demo"
 ): ReconciliationResult {
   const artifacts = deduplicateArtifacts(rawArtifacts);
 
@@ -186,6 +190,9 @@ export function reconcileClaim(
       ]
     };
 
+    const partitionResult = partitionEvidence(artifacts);
+    const paymentAttribution = attributePayments(artifacts, partitionResult);
+
     return ReconciliationResultSchema.parse({
       finalState: "UNKNOWN",
       confidence: "low",
@@ -197,6 +204,8 @@ export function reconcileClaim(
       recommendedAction: "Add another dated claim record, official status notification, or passbook entry.",
       doNotDo: "Do not submit another claim based on this vague or incomplete evidence.",
       reconciliationTrace: trace,
+      partitionResult,
+      paymentAttribution,
       bestSupportedState: "UNKNOWN",
       reasons: ["We don't have enough information to determine the claim state yet."],
       ruleFired: "INSUFFICIENT_EVIDENCE_REFUSAL",
@@ -209,21 +218,47 @@ export function reconcileClaim(
     });
   }
 
-  // 4. Contradiction Analysis: Check for Terminal Contradictions
+  // 4. Multi-Form Partitioning & Payment Attribution
+  const partitionResult = partitionEvidence(artifacts);
+  const paymentAttribution = attributePayments(artifacts, partitionResult);
+
+  // 5. Contradiction Analysis: Check for Terminal Contradictions
   const rejectedEvents = terminalEvents.filter(e => e.normalizedState === "REJECTED");
   const settledOrCreditedEvents = terminalEvents.filter(e => e.normalizedState === "SETTLED" || e.normalizedState === "CREDITED");
 
   let hasTerminalContradiction = false;
   if (rejectedEvents.length > 0 && settledOrCreditedEvents.length > 0) {
-    hasTerminalContradiction = true;
-    conflicts.push({
-      type: "TERMINAL_CONTRADICTION",
-      severity: "blocking",
-      message: "The supplied records contain contradictory terminal outcomes (rejection vs settlement/credit) for this claim.",
-      artifactIds: [...rejectedEvents, ...settledOrCreditedEvents].map(e => e.artifactId)
-    });
-    uncertainties.push("Incompatible terminal outcomes detected: One record indicates rejection while another indicates settlement/credit.");
-    rulesFired.push("TERMINAL_CONTRADICTION_DETECTED");
+    // Check if rejection and settlement/credit belong to the SAME claim context
+    if (partitionResult.contexts.length > 1) {
+      const rejContextIds = new Set(
+        partitionResult.contexts
+          .filter(ctx => rejectedEvents.some(r => ctx.evidenceArtifactIds.includes(r.artifactId)))
+          .map(c => c.contextId)
+      );
+      const settledContextIds = new Set(
+        partitionResult.contexts
+          .filter(ctx => settledOrCreditedEvents.some(s => ctx.evidenceArtifactIds.includes(s.artifactId)))
+          .map(c => c.contextId)
+      );
+
+      const hasSharedContext = Array.from(rejContextIds).some(id => settledContextIds.has(id));
+      if (hasSharedContext) {
+        hasTerminalContradiction = true;
+      }
+    } else {
+      hasTerminalContradiction = true;
+    }
+
+    if (hasTerminalContradiction) {
+      conflicts.push({
+        type: "TERMINAL_CONTRADICTION",
+        severity: "blocking",
+        message: "The supplied records contain contradictory terminal outcomes (rejection vs settlement/credit) for this claim.",
+        artifactIds: [...rejectedEvents, ...settledOrCreditedEvents].map(e => e.artifactId)
+      });
+      uncertainties.push("Incompatible terminal outcomes detected: One record indicates rejection while another indicates settlement/credit.");
+      rulesFired.push("TERMINAL_CONTRADICTION_DETECTED");
+    }
   }
 
   // Check Chronology Regression (e.g. In-Flight Processing dated strictly AFTER a Settled/Credited event)
@@ -242,7 +277,7 @@ export function reconcileClaim(
     }
   }
 
-  // 5. In-flight Stage Discordance (e.g. Submitted vs Processing vs Approved)
+  // 6. In-flight Stage Discordance (e.g. Submitted vs Processing vs Approved)
   const inFlightStages = [...new Set(inFlightEvents.map(e => e.normalizedState))];
   if (inFlightStages.length > 1 && terminalEvents.length === 0) {
     conflicts.push({
@@ -254,7 +289,7 @@ export function reconcileClaim(
     rulesFired.push("DIFFERENT_STAGES_DETECTED");
   }
 
-  // 6. Outcome Selection Logic
+  // 7. Outcome Selection Logic
   let finalState: CanonicalStatus = "UNKNOWN";
   let winningRationale = "";
   let reason = "";
@@ -279,36 +314,107 @@ export function reconcileClaim(
     const rejectEvent = terminalEvents.find(e => e.normalizedState === "REJECTED");
 
     if (creditEvent) {
-      finalState = "CREDITED";
-      rulesFired.push("LATER_CREDIT_EVIDENCE_WINS");
-      supportingObservationIds.push(creditEvent.artifactId);
-      if (settledEvent) supportingObservationIds.push(settledEvent.artifactId);
+      // Check payment attribution outcome
+      const paymentEvent = paymentAttribution.payments.find(p => p.sourceArtifactId === creditEvent.artifactId);
+      const isAttributed = !paymentEvent || paymentEvent.attributionStatus === "ATTRIBUTED";
 
-      // Flag earlier in-flight observations as stale
-      inFlightEvents.forEach(e => {
-        if (!creditEvent.date || !e.date || e.date <= creditEvent.date) {
-          e.isStale = true;
-          staleObservationIds.push(e.artifactId);
-        }
-      });
+      if (isAttributed) {
+        finalState = "CREDITED";
+        rulesFired.push("LATER_CREDIT_EVIDENCE_WINS");
+        supportingObservationIds.push(creditEvent.artifactId);
+        if (settledEvent) supportingObservationIds.push(settledEvent.artifactId);
 
-      if (staleObservationIds.length > 0) {
-        conflicts.push({
-          type: "STALE_OBSERVATION",
-          severity: "informational",
-          message: "A newer record shows bank credit received. Earlier records showing Under Process or Submitted are superseded by this outcome.",
-          artifactIds: [creditEvent.artifactId, ...staleObservationIds]
+        // Flag earlier in-flight observations as stale
+        inFlightEvents.forEach(e => {
+          if (!creditEvent.date || !e.date || e.date <= creditEvent.date) {
+            e.isStale = true;
+            staleObservationIds.push(e.artifactId);
+          }
         });
-        rulesFired.push("STALE_OBSERVATION_SUPERSEDED");
-      }
 
-      winningRationale = `Bank credit record (${creditEvent.artifactId}) provides explicit financial proof of disbursement, superseding earlier in-flight records.`;
-      const amountStr = claimIdentity.amount ? ` of ${claimIdentity.amount}` : "";
-      const dateStr = creditEvent.date ? ` on ${creditEvent.date}` : "";
-      reason = `A newer record shows bank credit${amountStr} received${dateStr}. Earlier records still showing Under Process or Submitted are superseded.`;
-      recommendedAction = "Verify the credit received in your bank passbook or statement; no duplicate claim or follow-up is needed.";
-      doNotDo = "Do not submit another claim just because an older tracker or SMS still shows Under Process.";
-      confidence = identityStatus === "CONFLICT" ? "low" : "high";
+        if (staleObservationIds.length > 0) {
+          conflicts.push({
+            type: "STALE_OBSERVATION",
+            severity: "informational",
+            message: "A newer record shows bank credit received. Earlier records showing Under Process or Submitted are superseded by this outcome.",
+            artifactIds: [creditEvent.artifactId, ...staleObservationIds]
+          });
+          rulesFired.push("STALE_OBSERVATION_SUPERSEDED");
+        }
+
+        winningRationale = `Bank credit record (${creditEvent.artifactId}) provides explicit financial proof of disbursement, superseding earlier in-flight records.`;
+        const amountStr = claimIdentity.amount ? ` of ${claimIdentity.amount}` : "";
+        const dateStr = creditEvent.date ? ` on ${creditEvent.date}` : "";
+        reason = `A newer record shows bank credit${amountStr} received${dateStr}. Earlier records still showing Under Process or Submitted are superseded.`;
+        recommendedAction = "Verify the credit received in your bank passbook or statement; no duplicate claim or follow-up is needed.";
+        doNotDo = "Do not submit another claim just because an older tracker or SMS still shows Under Process.";
+        confidence = identityStatus === "CONFLICT" ? "low" : "high";
+      } else {
+        // Payment is UNATTRIBUTED, CANDIDATE, or CONFLICTED.
+        // DO NOT MARK CREDITED!
+        rulesFired.push("UNATTRIBUTED_PAYMENT_BLOCKED_CREDIT");
+        uncertainties.push(
+          `Bank credit record (${creditEvent.artifactId}) cannot be conclusively linked to this claim (${paymentEvent?.attributionStatus.toLowerCase() || "unattributed"}).`
+        );
+
+        if (settledEvent) {
+          finalState = "SETTLED";
+          rulesFired.push("LATER_SETTLEMENT_EVIDENCE_WINS");
+          supportingObservationIds.push(settledEvent.artifactId);
+
+          inFlightEvents.forEach(e => {
+            if (!settledEvent.date || !e.date || e.date <= settledEvent.date) {
+              e.isStale = true;
+              staleObservationIds.push(e.artifactId);
+            }
+          });
+
+          winningRationale = `Official settlement record (${settledEvent.artifactId}) establishes terminal lifecycle completion. A bank credit (${creditEvent.artifactId}) was observed, but lacks verified claim attribution.`;
+          const dateStr = settledEvent.date ? ` on ${settledEvent.date}` : "";
+          reason = `Official records confirm this claim was settled${dateStr}. A bank credit was received, but we could not confidently link it to this specific claim.`;
+          recommendedAction = "Check your bank passbook narration or consult your bank branch to confirm direct claim attribution.";
+          doNotDo = "Do not submit a duplicate claim; official records already confirm settlement.";
+          confidence = "medium";
+        } else if (inFlightEvents.length > 0) {
+          const approvedEvent = inFlightEvents.find(e => e.normalizedState === "APPROVED");
+          if (approvedEvent) {
+            finalState = "APPROVED";
+            rulesFired.push("CLAIM_APPROVED_IN_FLIGHT");
+            supportingObservationIds.push(approvedEvent.artifactId);
+            winningRationale = `Approval milestone (${approvedEvent.artifactId}) verified; observed bank credit cannot be attributed to this claim.`;
+            reason = "Your claim has been approved by the EPFO authority and is awaiting disbursement. A bank credit was observed, but is not linked to this claim.";
+            recommendedAction = "Wait for payment settlement to be officially credited to your bank account.";
+            doNotDo = "Do not re-submit your claim; it is already sanctioned.";
+            confidence = "medium";
+          } else {
+            finalState = "PROCESSING";
+            rulesFired.push("PROCESSING_IN_FLIGHT_RECONCILED");
+            inFlightEvents.forEach(e => supportingObservationIds.push(e.artifactId));
+            winningRationale = "Active processing milestones confirmed; observed bank credit cannot be attributed to this in-flight claim.";
+            reason = "Based on the evidence provided, processing has started. A bank credit was noted, but we could not link it to this claim.";
+            recommendedAction = "Allow processing to complete before expecting disbursement credit.";
+            doNotDo = "Do not submit duplicate claims while processing is in progress.";
+            confidence = "medium";
+          }
+        } else if (rejectEvent) {
+          finalState = "REJECTED";
+          rulesFired.push("OFFICIAL_REJECTION_RECORDED");
+          supportingObservationIds.push(rejectEvent.artifactId);
+          winningRationale = `Official rejection notice (${rejectEvent.artifactId}) is the definitive terminal outcome. The unlinked bank credit does not resolve this rejection.`;
+          reason = "Official records indicate this claim was rejected by the field office. An unlinked bank credit was noted, but does not resolve this rejected claim.";
+          recommendedAction = "Review the rejection reason in your official EPFO portal before taking any corrective step.";
+          doNotDo = "Do not submit an identical claim without rectifying the stated rejection reason.";
+          confidence = "high";
+        } else {
+          finalState = "UNKNOWN";
+          rulesFired.push("UNATTRIBUTED_PAYMENT_REFUSAL");
+          winningRationale = `Bank credit record (${creditEvent.artifactId}) is not attributed to any verified claim context.`;
+          reason = "A bank credit was received, but the records provide insufficient proof linking it to an active EPFO claim.";
+          recommendedAction = "Verify your EPFO passbook or bank statement narration for explicit claim reference details.";
+          doNotDo = "Do not assume payment corresponds to a pending claim without reference confirmation.";
+          confidence = "low";
+        }
+      }
     } else if (settledEvent) {
       finalState = "SETTLED";
       rulesFired.push("LATER_SETTLEMENT_EVIDENCE_WINS");
@@ -474,6 +580,16 @@ export function reconcileClaim(
   const supportingEvidence = events.filter(e => supportingObservationIds.includes(e.artifactId));
   const conflictingEvidence = conflicts;
 
+  // Evaluate rejection / diagnostic intelligence
+  const diagnostic = findRejectionDiagnostic(artifacts);
+
+  // Evaluate temporal domain milestones & benchmarks
+  const submittedEvent = events.find(e => e.normalizedState === "SUBMITTED" && e.date);
+  const datedEvents = events.filter(e => e.date);
+  const submissionDate = submittedEvent?.date || (datedEvents.length > 0 ? datedEvents[0].date : null);
+  const latestDate = datedEvents.length > 0 ? datedEvents[datedEvents.length - 1].date : null;
+  const timingAssessment = assessClaimTimings(submissionDate, latestDate);
+
   return ReconciliationResultSchema.parse({
     finalState,
     confidence,
@@ -485,6 +601,10 @@ export function reconcileClaim(
     recommendedAction,
     doNotDo,
     reconciliationTrace,
+    diagnostic: diagnostic || null,
+    timingAssessment,
+    partitionResult,
+    paymentAttribution,
     bestSupportedState: finalState,
     reasons: [reason],
     ruleFired: rulesFired[0] || "RECONCILED",

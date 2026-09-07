@@ -12,8 +12,8 @@ export async function POST(request: Request) {
     if (!parsed.success) return jsonError(parsed.error.issues[0]?.message || "The evidence request is invalid.", 400);
     const sample = parsed.data.caseId ? sampleClaims[parsed.data.caseId] : null;
     const input = sample?.artifacts || parsed.data.artifacts;
-    if (!input?.length) return jsonError("Add at least one piece of evidence.", 400);
-    if (!sample && !isGeminiConfigured()) return jsonError("Adding your own evidence needs Gemini analysis. The sample claims work in demo mode without a key.", 503);
+    if (!input?.length) return jsonError("Please add at least one claim record to check.", 400);
+    if (!sample && !isGeminiConfigured()) return jsonError("Document analysis service is currently unavailable. Please try an example case or check back shortly.", 503);
     const artifacts = (!sample && isGeminiConfigured()) ? await extractEvidence(input) : input;
     return NextResponse.json(reconcileClaim(artifacts, sample?.memberName || null, (!sample && isGeminiConfigured()) ? "gemini" : "demo"));
   } catch (error) {
