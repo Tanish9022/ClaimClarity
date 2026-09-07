@@ -11,7 +11,8 @@ const art = (
   status: string | null = null,
   claimId: string | null = null,
   amount: string | null = null,
-  ambiguity: string | null = null
+  ambiguity: string | null = null,
+  claimType: string | null = null
 ): Artifact => ({
   id,
   source,
@@ -20,7 +21,7 @@ const art = (
   date,
   status,
   claimId,
-  claimType: null,
+  claimType,
   amount,
   ambiguity,
   extractionConfidence: "high",
@@ -323,6 +324,69 @@ describe("ClaimClarity V2 Deterministic Reconciliation Engine", () => {
       expect(r.finalState).toBe("UNKNOWN");
       expect(r.confidence).toBe("low");
       expect(r.rulesFired).toContain("INSUFFICIENT_EVIDENCE_REFUSAL");
+    });
+  });
+
+  describe("Package 4: Payment Attribution & Multi-Form Reconciliation Suite", () => {
+    it("UNATTRIBUTED payment does NOT produce CREDITED state (remains SETTLED)", () => {
+      const evidence = [
+        art("s1", "new_tracker", "Claim CLM-401 Form 19 Settled for ₹45,000", "2026-07-10", "Settled", "CLM-401", "₹45,000", null, "Form 19"),
+        art("b1", "bank", "Bank credit of ₹10,000 from XYZ Pvt Ltd", "2026-07-12", "Credit", null, "₹10,000")
+      ];
+
+      const r = reconcileClaim(evidence, "Rohan", "demo");
+      expect(r.finalState).toBe("SETTLED");
+      expect(r.finalState).not.toBe("CREDITED");
+      expect(r.rulesFired).toContain("UNATTRIBUTED_PAYMENT_BLOCKED_CREDIT");
+      expect(r.paymentAttribution?.hasUnattributedPayment).toBe(true);
+    });
+
+    it("CANDIDATE payment does NOT automatically produce CREDITED state", () => {
+      const evidence = [
+        art("s1", "new_tracker", "Claim CLM-101 Form 19 Settled for ₹40,000", "2026-07-10", "Settled", "CLM-101", "₹40,000", null, "Form 19"),
+        art("s2", "new_tracker", "Claim CLM-202 Form 10C Settled for ₹12,000", "2026-07-10", "Settled", "CLM-202", "₹12,000", null, "Form 10C"),
+        art("b1", "bank", "Bank credit of ₹40,000 from EPFO-NEFT received", "2026-07-12", "Credit", null, "₹40,000")
+      ];
+
+      const r = reconcileClaim(evidence, "Rohan", "demo");
+      expect(r.finalState).toBe("SETTLED");
+      expect(r.finalState).not.toBe("CREDITED");
+      expect(r.rulesFired).toContain("UNATTRIBUTED_PAYMENT_BLOCKED_CREDIT");
+    });
+
+    it("CONFLICTED payment does NOT produce CREDITED state", () => {
+      const evidence = [
+        art("s1", "new_tracker", "Claim CLM-101 Form 19 Settled for ₹50,000", "2026-07-10", "Settled", "CLM-101", "₹50,000", null, "Form 19"),
+        art("s2", "new_tracker", "Claim CLM-202 Form 31 Settled for ₹50,000", "2026-07-10", "Settled", "CLM-202", "₹50,000", null, "Form 31"),
+        art("b1", "bank", "Bank credit of ₹50,000 received", "2026-07-12", "Credit", null, "₹50,000")
+      ];
+
+      const r = reconcileClaim(evidence, "Rohan", "demo");
+      expect(r.finalState).not.toBe("CREDITED");
+      expect(r.paymentAttribution?.hasConflictedPayment).toBe(true);
+    });
+
+    it("ATTRIBUTED payment with matching reference successfully reaches CREDITED", () => {
+      const evidence = [
+        art("s1", "new_tracker", "Claim CLM-990 Form 19 Settled for ₹60,000", "2026-07-10", "Settled", "CLM-990", "₹60,000", null, "Form 19"),
+        art("b1", "bank", "Bank credit of ₹60,000 for EPFO claim CLM-990 received", "2026-07-12", "Credit", "CLM-990", "₹60,000", null, "Form 19")
+      ];
+
+      const r = reconcileClaim(evidence, "Rohan", "demo");
+      expect(r.finalState).toBe("CREDITED");
+      expect(r.paymentAttribution?.hasAttributedPayment).toBe(true);
+    });
+
+    it("multi-form partitioning ensures rejection on Form 10C does not cause false terminal contradiction against Form 19 settlement", () => {
+      const evidence = [
+        art("s1", "new_tracker", "Claim CLM-101 Form 19 Settled", "2026-07-10", "Settled", "CLM-101", null, null, "Form 19"),
+        art("r1", "new_tracker", "Claim CLM-202 Form 10C Rejected: Signature mismatch", "2026-07-08", "Rejected", "CLM-202", null, null, "Form 10C")
+      ];
+
+      const r = reconcileClaim(evidence, "Rohan", "demo");
+      expect(r.partitionResult?.hasMultiClaim).toBe(true);
+      expect(r.partitionResult?.contexts.length).toBe(2);
+      expect(r.conflicts.some(c => c.type === "TERMINAL_CONTRADICTION")).toBe(false);
     });
   });
 });

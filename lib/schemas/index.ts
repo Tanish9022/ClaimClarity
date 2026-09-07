@@ -119,6 +119,141 @@ export const CompetingStateEvaluationSchema = z.object({
 });
 export type CompetingStateEvaluation = z.infer<typeof CompetingStateEvaluationSchema>;
 
+export const RejectionCategorySchema = z.enum([
+  "REJ_KYC_IDENTITY_MISMATCH",
+  "REJ_BANK_ACCOUNT_MISMATCH",
+  "REJ_SERVICE_ELIGIBILITY",
+  "REJ_DUPLICATE_CLAIM",
+  "REJ_MEMBER_SIGNATURE_DOCS",
+  "REJ_CONTRIBUTION_WAGE_DISCREPANCY",
+  "REJ_ESTABLISHMENT_CLOSED_UNATTACHED",
+  "REJ_FORM_PURPOSE_INELIGIBLE",
+  "REJ_FATHER_SPOUSE_NAME_MISMATCH",
+  "REJ_TRANSFER_ANNEXURE_K",
+  "REJ_TECHNICAL_SYSTEM_ERROR",
+  "REJ_UNSPECIFIED"
+]);
+export type RejectionCategory = z.infer<typeof RejectionCategorySchema>;
+
+export const RejectionCertaintySchema = z.enum(["exact", "supported", "probable", "unspecified"]);
+export type RejectionCertainty = z.infer<typeof RejectionCertaintySchema>;
+
+export const ResolutionStageSchema = z.enum(["INFORM", "PREVENT_PROTECT", "REMEDIATE", "ESCALATE"]);
+export type ResolutionStage = z.infer<typeof ResolutionStageSchema>;
+
+export const RejectionDiagnosticSchema = z.object({
+  category: RejectionCategorySchema,
+  rawText: z.string(),
+  sourceArtifactId: z.string(),
+  sourceType: SourceSchema,
+  channelDetail: z.string().nullable(),
+  certainty: RejectionCertaintySchema,
+  matchingRuleId: z.string(),
+  matchedKeywords: z.array(z.string()),
+  diagnosticTitle: z.object({ en: z.string(), hi: z.string() }),
+  interpretation: z.object({ en: z.string(), hi: z.string() }),
+  resolutionGuidance: z.object({
+    stage: ResolutionStageSchema,
+    prerequisites: z.array(z.string()),
+    action: z.object({ en: z.string(), hi: z.string() }),
+    doNotDo: z.object({ en: z.string(), hi: z.string() }).nullable(),
+    escalationCondition: z.object({ en: z.string(), hi: z.string() }).nullable()
+  })
+});
+export type RejectionDiagnostic = z.infer<typeof RejectionDiagnosticSchema>;
+
+export const TimingAssessmentSchema = z.object({
+  submissionDate: z.string().nullable(),
+  latestObservationDate: z.string().nullable(),
+  elapsedDaysFromSubmission: z.number().nullable(),
+  isBeyondBenchmark: z.boolean(),
+  isStalePending: z.boolean(),
+  isEscalationEligible: z.boolean(),
+  benchmarkDays: z.number(),
+  timingNotice: z.object({ en: z.string(), hi: z.string() }).nullable()
+});
+export type TimingAssessment = z.infer<typeof TimingAssessmentSchema>;
+
+// Package 4: Multi-Form & Entity Partitioning Schemas
+export const FormTypeSchema = z.enum([
+  "Form 19",
+  "Form 10C",
+  "Form 31",
+  "Form 13",
+  "Form 10D",
+  "Form 20",
+  "FORM_UNSPECIFIED"
+]);
+export type FormType = z.infer<typeof FormTypeSchema>;
+
+export const ContextResolutionStatusSchema = z.enum([
+  "CONFIDENT",
+  "PROBABLE",
+  "UNRESOLVED",
+  "CONFLICTED"
+]);
+export type ContextResolutionStatus = z.infer<typeof ContextResolutionStatusSchema>;
+
+export const ClaimContextSchema = z.object({
+  contextId: z.string(),
+  claimReference: z.string().nullable(),
+  rawClaimReference: z.string().nullable(),
+  formType: FormTypeSchema,
+  memberId: z.string().nullable().default(null),
+  establishmentId: z.string().nullable().default(null),
+  evidenceArtifactIds: z.array(z.string()),
+  resolutionStatus: ContextResolutionStatusSchema,
+  signals: z.array(z.string()),
+  conflicts: z.array(z.string())
+});
+export type ClaimContext = z.infer<typeof ClaimContextSchema>;
+
+export const EvidencePartitionResultSchema = z.object({
+  contexts: z.array(ClaimContextSchema),
+  unresolvedArtifactIds: z.array(z.string()),
+  hasMultiClaim: z.boolean(),
+  hasMultiForm: z.boolean(),
+  hasConflictingEntities: z.boolean(),
+  partitionSummary: z.object({ en: z.string(), hi: z.string() })
+});
+export type EvidencePartitionResult = z.infer<typeof EvidencePartitionResultSchema>;
+
+// Package 4: Payment Attribution Schemas
+export const PaymentAttributionOutcomeSchema = z.enum([
+  "UNATTRIBUTED",
+  "CANDIDATE",
+  "ATTRIBUTED",
+  "CONFLICTED"
+]);
+export type PaymentAttributionOutcome = z.infer<typeof PaymentAttributionOutcomeSchema>;
+
+export const PaymentEventSchema = z.object({
+  eventId: z.string(),
+  sourceArtifactId: z.string(),
+  amount: z.string().nullable(),
+  numericAmount: z.number().nullable(),
+  date: z.string().nullable(),
+  transactionReference: z.string().nullable(),
+  rawNarration: z.string(),
+  senderReference: z.string().nullable(),
+  attributionStatus: PaymentAttributionOutcomeSchema,
+  attributedContextId: z.string().nullable(),
+  candidateContextIds: z.array(z.string()),
+  matchedSignals: z.array(z.string()),
+  unmatchedSignals: z.array(z.string()),
+  explanation: z.object({ en: z.string(), hi: z.string() })
+});
+export type PaymentEvent = z.infer<typeof PaymentEventSchema>;
+
+export const PaymentAttributionResultSchema = z.object({
+  payments: z.array(PaymentEventSchema),
+  hasUnattributedPayment: z.boolean(),
+  hasConflictedPayment: z.boolean(),
+  hasCandidatePayment: z.boolean(),
+  hasAttributedPayment: z.boolean()
+});
+export type PaymentAttributionResult = z.infer<typeof PaymentAttributionResultSchema>;
+
 export const ReconciliationTraceSchema = z.object({
   supportingObservations: z.array(z.string()),
   staleObservations: z.array(z.string()),
@@ -141,6 +276,14 @@ export const ReconciliationResultSchema = z.object({
   recommendedAction: z.string(),
   doNotDo: z.string().nullable(),
   reconciliationTrace: ReconciliationTraceSchema,
+
+  // Package 3 Diagnostic & Timing extensions
+  diagnostic: RejectionDiagnosticSchema.nullable().optional(),
+  timingAssessment: TimingAssessmentSchema.nullable().optional(),
+
+  // Package 4 Partitioning & Attribution extensions
+  partitionResult: EvidencePartitionResultSchema.nullable().optional(),
+  paymentAttribution: PaymentAttributionResultSchema.nullable().optional(),
 
   // Full backward compatibility aliases for existing UI and API callers
   bestSupportedState: CanonicalStatusSchema,

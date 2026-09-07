@@ -1,0 +1,509 @@
+================================================================================
+CLAIMCLARITY V2
+FINAL IMPLEMENTATION SUMMARY & MASTER ARCHITECTURAL SPECIFICATION
+================================================================================
+
+1. PROJECT OVERVIEW
+ClaimClarity is an independent civic-tech evidence reconciliation engine and
+diagnostic support system for Indian citizens navigating contradictory,
+fragmented, and delayed Employees' Provident Fund Organisation (EPFO) claims.
+
+Citizens frequently encounter confusing, out-of-order, or contradictory updates
+across multiple independent touchpoints—such as the Member e-Sewa Unified Portal,
+the EPFiGMS Grievance Portal, SMS status alerts, passbook transaction ledgers,
+and bank account statements. ClaimClarity ingests multi-source evidence records,
+extracts objective factual observations with runtime schema validation, partitions
+multi-claim and multi-form contexts, performs multi-signal payment attribution,
+evaluates timeline chronology and staleness, executes a purely deterministic
+reconciliation state machine, maps diagnostic rejection reasons to actionable
+guidance, renders a structured Verification Matrix, and generates an independent
+Evidence & Grievance Support Dossier (PDF).
+
+ClaimClarity is not an official government portal, claims tracker, calculator,
+or free-form probabilistic chatbot. It operates as a privacy-first, stateless
+evidence-organizing utility that refuses to guess when data is insufficient.
+
+
+2. CORE PROBLEM SOLVED
+Indian PF members withdrawing or transferring accumulated balances face three
+systemic clarity hurdles:
+  A. Out-of-Order & Asynchronous Record Latency: An older portal tracker may show
+     "Under Process" days after a bank credit has already occurred, or an SMS may
+     arrive out of sequence.
+  B. Contradictory Information: Incompatible statuses (e.g. an official rejection
+     notification juxtaposed with a bank credit entry) cause severe citizen anxiety,
+     often triggering premature duplicate claims or costly grievance escalations.
+  C. Technical Jargon & Unspecified Rejection Codes: Official field office rejection
+     remarks (e.g. "Signature mismatch", "Member details differ", "Annexure K pending")
+     leave citizens uninformed about what specific prerequisite action is required.
+
+ClaimClarity resolves these hurdles by providing four simple, definitive answers:
+  1. What is the actual evidence-backed status of my claim?
+  2. Why did ClaimClarity reach this conclusion (with concrete proof)?
+  3. What specific action should I take next?
+  4. What mistakes should I avoid right now (e.g. "Don't file a duplicate claim")?
+
+
+3. FINAL ARCHITECTURE
+The production system is architected as a layered, unidirectional, fail-safe pipeline:
+
+  User Evidence (Screenshots, Text, Portal extracts, Passbooks, SMS)
+      │
+      ▼
+  Multimodal AI Extraction (Google Gemini 2.5 Flash via @google/genai)
+  [Extracts ONLY structured factual observations; makes NO state decisions]
+      │
+      ▼
+  Strict Schema Validation (Zod runtime parsing & error boundaries)
+  [Rejects schema drift, malformed dates, invalid currencies]
+      │
+      ▼
+  Claim & Form Partitioning Layer (lib/entity/formPartition.ts)
+  [Separates records by Claim ID & Form type; prevents cross-claim contamination]
+      │
+      ▼
+  Payment Attribution Engine (lib/reconciliation/attribution.ts)
+  [Separates payment existence from payment ownership via multi-signal matching]
+      │
+      ▼
+  Chronological & Staleness Analysis (lib/reconciliation/reconcileClaim.ts)
+  [Sorts events, identifies superseded in-flight records, flags chronological regressions]
+      │
+      ▼
+  Deterministic Reconciliation State Machine (lib/reconciliation/reconcileClaim.ts)
+  [Pure rule-based state evaluator; emits exact status, confidence, and winning rationale]
+      │
+      ▼
+  Rejection Intelligence & Diagnostic Taxonomy (lib/reconciliation/rejections.ts)
+  [12-category deterministic taxonomy; maps reasons to bounded 4-step resolution ladders]
+      │
+      ▼
+  Centralized Service Timing Model (lib/config/timings.ts)
+  [20-day Citizen Charter benchmark, 30-day stale threshold, 45-day escalation rule]
+      │
+      ├───────────────────────────────┬───────────────────────────────┐
+      ▼                               ▼                               ▼
+  Citizen Web Interface       Verification Matrix         Dossier Generator (PDF)
+  (Next.js React UI)     (Structured audit breakdown) (Deterministic PDF document)
+
+
+4. COMPLETE DATA FLOW
+  Step 1 — Input Ingestion: The user inputs claim text, uploads screenshots (PNG,
+          JPG, PDF), or selects a sample scenario.
+  Step 2 — Structured Extraction: Backend `/api/analyze` sends raw artifacts to
+          Gemini 2.5 Flash (or demo dispatcher) with structured JSON schemas.
+  Step 3 — Zod Parsing: Extracted artifacts are parsed into strictly typed
+          `Artifact` and `ClaimEvent` schemas.
+  Step 4 — Partitioning: `partitionEvidence()` groups records by normalized claim
+          reference numbers and form types (Form 19, 10C, 31, 13, 10D, 20).
+  Step 5 — Payment Attribution: `attributePayments()` examines payment events against
+          claim contexts, evaluating explicit references, EPFO sender labels, amount
+          matches, and corroborating settlement milestones.
+  Step 6 — Rejection Mapping: If a terminal rejection is detected, `classifyRejection()`
+          matches regex patterns to one of 12 deterministic categories.
+  Step 7 — State Evaluation: `reconcileClaim()` executes pure rule-based logic to
+          determine the winning canonical status (`CREDITED`, `SETTLED`, `APPROVED`,
+          `PROCESSING`, `SUBMITTED`, `REJECTED`, or `UNKNOWN`).
+  Step 8 — Verification Matrix: `buildVerificationMatrix()` generates a granular
+          breakdown of verified vs observed facts for auditability.
+  Step 9 — Dossier Compilation: The user can trigger `/api/dossier` to download a
+          formal, 11-section printable PDF evidence package.
+
+
+5. PACKAGE 1 — FRONTEND PRODUCTIZATION
+  - Objective: Transform the citizen-facing UI into an independent, calm, authoritative
+    civic service free of internal AI vendor branding or prototype framing.
+  - Implementations:
+    * Total removal of internal model names (`Gemini`, `Google Gemini`, `Gemini 2.5 Flash`)
+      and development status terms (`prototype`, `MVP`) from rendered frontend.
+    * Master copy rewrite across `lib/i18n.ts`, `lib/uiLabels.ts`, `app/page.tsx`,
+      `app/architecture/page.tsx`, and `components/**`.
+    * Retained legitimate technical terms in architecture and audit sections (`Zod`,
+      `deterministic`, `heuristic`, `TypeScript`, `Next.js`, `serverless`, `schema`).
+  - Status: COMPLETE & FROZEN.
+
+
+6. PACKAGE 1.5 — CI / MERGE QUALITY GATE
+  - Objective: Establish an automated, production-grade GitHub Actions CI pipeline.
+  - Implementations:
+    * Workflow configuration in `.github/workflows/ci.yml`.
+    * Six mandatory automated gates on pull requests and pushes to `main`:
+      1. TypeScript compilation (`tsc --noEmit`)
+      2. ESLint checks (`next lint`)
+      3. Productization regression guard test (`tests/productization-guard.test.ts`)
+      4. Full Vitest test suite (`vitest run`)
+      5. Next.js production build (`next build`)
+      6. Hermetic Playwright end-to-end browser suite (`e2e/claimclarity.spec.ts`)
+    * 100% hermetic execution without requiring live API keys or external networks.
+  - Status: COMPLETE & FROZEN.
+
+
+7. PACKAGE 2 — COMPONENT DECOMPOSITION
+  - Objective: Refactor monolithic `app/page.tsx` into modular, accessible React components.
+  - Implementations:
+    * Created 11 modular components under `components/`:
+      - `Header.tsx`: Navigation, language switcher (EN/HI), accessibility links.
+      - `LandingHero.tsx`: Public utility branding, primary CTAs, privacy badges.
+      - `ExampleScenarios.tsx`: Interactive sample scenario selector.
+      - `EvidenceReview.tsx`: Pre-reconciliation evidence confirmation view.
+      - `EvidenceUploader.tsx`: Multi-format file uploader and text paste box.
+      - `LoadingState.tsx`: Deterministic multi-step progress indicators.
+      - `ResultCard.tsx`: Master reconciliation view delivering the 4 key answers.
+      - `EvidenceLedger.tsx`: Chronological timeline with provenance badges.
+      - `RejectionDiagnosticView.tsx`: Structured diagnostic & resolution card.
+      - `VerificationMatrix.tsx`: Granular check-by-check verification matrix.
+      - `DossierDownloadCard.tsx`: PDF dossier download CTA with legal disclaimer.
+      - `Footer.tsx`: Independent civic service disclaimer and footer links.
+  - Status: COMPLETE & FROZEN.
+
+
+8. PACKAGE 3 — REJECTION INTELLIGENCE & TIMING
+  - Objective: Implement structured rejection diagnostics and centralized timing rules.
+  - Implementations:
+    * 12-category deterministic rejection taxonomy in `lib/reconciliation/rejections.ts`:
+      1. `REJ_KYC_IDENTITY_MISMATCH` (Name, DoB, Father/Spouse name)
+      2. `REJ_BANK_ACCOUNT_MISMATCH` (Bank IFSC, invalid passbook/cheque)
+      3. `REJ_SERVICE_ELIGIBILITY` (Service duration < 6 months, NCP days)
+      4. `REJ_DUPLICATE_CLAIM` (Overlapping active or settled claims)
+      5. `REJ_MEMBER_SIGNATURE_DOCS` (Unsigned Form 19/10C, uncertified docs)
+      6. `REJ_CONTRIBUTION_WAGE_DISCREPANCY` (Wage ceiling mismatch, missing share)
+      7. `REJ_ESTABLISHMENT_CLOSED_UNATTACHED` (Closed company, non-contributing)
+      8. `REJ_FORM_PURPOSE_INELIGIBLE` (Form 31 para ineligibility, illness limits)
+      9. `REJ_FATHER_SPOUSE_NAME_MISMATCH` (Discrepant parentage/marital records)
+      10. `REJ_TRANSFER_ANNEXURE_K` (Annexure K pending from previous field office)
+      11. `REJ_TECHNICAL_SYSTEM_ERROR` (Field office server/batch processing failure)
+      12. `REJ_UNSPECIFIED` (Safe fallback when rejection text is ambiguous)
+    * 4-Stage Resolution Ladder: `INFORM` -> `PREVENT_PROTECT` -> `REMEDIATE` -> `ESCALATE`.
+    * Centralized Timing Model in `lib/config/timings.ts`:
+      - 20-day Citizen Charter benchmark (informational guideline)
+      - 30-day stale pending threshold
+      - 45-day ClaimClarity escalation threshold
+  - Status: COMPLETE & FROZEN.
+
+
+9. PACKAGE 4 — PAYMENT ATTRIBUTION & MULTI-FORM / MULTI-ENTITY
+  - Objective: Prevent false settlement conclusions and cross-claim contamination.
+  - Implementations:
+    * Form & Claim Partitioning in `lib/entity/formPartition.ts`:
+      - Distinguishes distinct claim references (`CLM-1` vs `CLM-2`).
+      - Distinguishes distinct form types (Form 19 vs 10C vs 31).
+      - Prevents cross-claim contamination (Claim A settled does not mask Claim B rejected).
+      - Isolates generic or unlinked records into `unresolvedArtifactIds`.
+    * Payment Attribution in `lib/reconciliation/attribution.ts`:
+      - Separates payment existence from payment ownership.
+      - Classifies payments into: `ATTRIBUTED`, `CANDIDATE`, `UNATTRIBUTED`, `CONFLICTED`.
+      - Requires explicit claim reference or settlement corroboration for `ATTRIBUTED`.
+      - Prevents `UNATTRIBUTED`, `CANDIDATE`, and `CONFLICTED` from producing `CREDITED`.
+  - Status: COMPLETE & FROZEN.
+
+
+10. PACKAGE 5 — VERIFICATION MATRIX & EVIDENCE / GRIEVANCE SUPPORT DOSSIER
+  - Objective: Provide audit-level evidence verification and printable case packages.
+  - Implementations:
+    * Shared View Model in `lib/documents/dossierModel.ts`:
+      - Constructs structured verification matrix rows grouped by claim context.
+      - Segregates observed facts from ClaimClarity findings.
+      - Masks sensitive PII (Aadhaar, PAN, phone numbers, bank accounts).
+    * Pure TypeScript PDF Engine in `lib/documents/pdfEngine.ts`:
+      - Zero-dependency PDF 1.4 binary assembler with multi-page pagination.
+      - Running headers, footers with page numbering, tables, and callout boxes.
+    * Dossier Generator in `lib/documents/dossierGenerator.ts`:
+      - Renders 11 structured sections into a professional, non-governmental PDF.
+    * Dedicated API route in `app/api/dossier/route.ts`:
+      - Stateless POST endpoint validating payloads and streaming PDFs.
+    * Interactive UI in `components/VerificationMatrix.tsx` and `components/DossierDownloadCard.tsx`.
+  - Status: COMPLETE & FROZEN.
+
+
+11. AI / EXTRACTION ARCHITECTURE
+  - Component: `lib/ai/extractEvidence.ts`
+  - Model: Google Gemini 2.5 Flash (`@google/genai` SDK)
+  - Strict Boundary: Multimodal vision & language parsing is used EXCLUSIVELY to
+    extract text, dates, raw status strings, claim IDs, form names, and monetary
+    amounts into strongly typed JSON structures.
+  - Fail-Safe Guard: If `GEMINI_API_KEY` is not present, the system operates in
+    hermetic Demo Mode, routing pre-extracted synthetic records directly into the
+    deterministic reconciliation engine without external calls.
+  - Non-Authority Rule: The AI model NEVER determines whether a claim is approved,
+    settled, credited, or rejected.
+
+
+12. DETERMINISTIC RECONCILIATION ARCHITECTURE
+  - Component: `lib/reconciliation/reconcileClaim.ts`
+  - Paradigm: Pure mathematical and rule-based state machine.
+  - Canonical Status Hierarchy:
+    `CREDITED` > `SETTLED` > `APPROVED` > `PROCESSING` > `SUBMITTED` > `REJECTED` > `UNKNOWN`
+  - Core Decision Principles:
+    * Chronology & Supersession: A later terminal outcome (Settled/Credited) supersedes
+      earlier in-flight processing records.
+    * Terminal Contradiction: Mutually exclusive terminal states (Rejection vs Credit
+      for the same claim context) yield `UNKNOWN` state with `TERMINAL_CONTRADICTION` warning.
+    * Evidence Sufficiency Floor: Vague, undated, or unidentifiable records refuse to guess
+      and yield `UNKNOWN` with actionable guidance on missing facts.
+    * Mathematical Confidence: High (corroborated & uncontradicted), Medium (supported
+      with minor latency/in-flight ambiguity), Low (insufficient or conflicted).
+
+
+13. CLAIM / FORM PARTITIONING
+  - Component: `lib/entity/formPartition.ts`
+  - Invariants:
+    * Same member != Same claim (Multiple concurrent claims remain separate).
+    * Form type != Claim identity (Form 19 and Form 10C are distinct claims).
+    * Unresolved evidence remains in `unresolvedArtifactIds` rather than being falsely
+      assigned to the first available claim.
+    * Discordant identifiers generate `IDENTIFIER_MISMATCH` conflicts.
+
+
+14. PAYMENT ATTRIBUTION
+  - Component: `lib/reconciliation/attribution.ts`
+  - Invariants:
+    * Bank credit existence != Claim attribution.
+    * Amount match alone is NOT sufficient for attribution (remains `CANDIDATE`).
+    * Timing proximity alone is NOT sufficient for attribution.
+    * Sender label alone (`EPFO-NEFT`) is NOT claim ownership.
+    * `ATTRIBUTED` requires direct claim reference matching OR single context with
+      explicit EPFO sender AND corroborating settlement milestone evidence.
+    * Only `ATTRIBUTED` payments can transition a claim to `CREDITED`.
+
+
+15. REJECTION INTELLIGENCE
+  - Component: `lib/reconciliation/rejections.ts`
+  - Engine: Deterministic keyword & regex matcher mapping raw rejection snippets to
+    the 12-category taxonomy.
+  - Output: Diagnostic title, plain-language interpretation, resolution prerequisites,
+    concrete corrective action, "Don't Do This Yet" warning, and escalation rules.
+  - Fallback: Ambiguous phrases safely degrade to `REJ_UNSPECIFIED`.
+
+
+16. TIMING MODEL
+  - Component: `lib/config/timings.ts`
+  - Rules:
+    * Benchmark: 20 days (EPFO Citizen Charter informational guideline).
+    * Stale Pending: 30 days without milestone updates.
+    * Escalation Threshold: 45 days elapsed from submission date.
+  - Representation: Presented strictly as service benchmarks, never as official legal rulings.
+
+
+17. VERIFICATION MATRIX
+  - Component: `components/VerificationMatrix.tsx` & `lib/documents/dossierModel.ts`
+  - Features:
+    * Granular check categories: Claim Reference, Form Type, Lifecycle Status,
+      Payment Attribution, Timing & Benchmark, Rejection Diagnostics.
+    * Context Separation: Context-specific sub-matrices for multi-claim cases.
+    * Fact vs Finding: Separates raw evidence from ClaimClarity interpretation.
+    * Status Badges: Verified, Supported, Needs Review, Unclear, Conflicted, Superseded.
+
+
+18. DOSSIER / PDF SYSTEM
+  - Component: `lib/documents/dossierGenerator.ts` & `lib/documents/pdfEngine.ts`
+  - Format: Pure standards-compliant PDF 1.4 binary.
+  - Sections: 11 distinct structured sections covering Summary, Contexts, Assessment,
+    Diagnostics, Payment, Verification Matrix, Timeline, Conflicts, Actions, Index, Disclaimer.
+  - Security & Privacy: Automatic PII masking of Aadhaar, PAN, phone numbers, and bank accounts.
+  - Disclaimer: Prominent header/footer and dedicated legal notice declaring independent aid status.
+
+
+19. FRONTEND ARCHITECTURE
+  - Framework: Next.js 14 (App Router) + React 18 + TailwindCSS.
+  - Routes:
+    * `/`: Main citizen application flow (Hero, Scenarios, Uploader, Review, Result, Matrix, Dossier).
+    * `/architecture`: Comprehensive technical explanation of the 9-stage pipeline.
+  - Productization: Provider-agnostic public copy; 0 occurrences of internal model vendor names.
+
+
+20. API SURFACE
+  - `POST /api/analyze`:
+    * Request: `{ caseId?: string, artifacts?: Artifact[] }`
+    * Response: `ReconciliationResult` (Canonical status, confidence, reasons, events,
+      trace, diagnostic, timing, partitionResult, paymentAttribution).
+  - `POST /api/dossier`:
+    * Request: `{ result: ReconciliationResult, lang?: "en" | "hi" }`
+    * Response: Binary `application/pdf` (`ClaimClarity-Evidence-Dossier.pdf`).
+
+
+21. DATA SCHEMAS
+  - Component: `lib/schemas/index.ts`
+  - Validation: 100% Zod runtime schema validation on all inputs, intermediates, and outputs.
+  - Core Schemas: `ArtifactSchema`, `ClaimEventSchema`, `ReconciliationResultSchema`,
+    `RejectionDiagnosticSchema`, `TimingAssessmentSchema`, `ClaimContextSchema`,
+    `EvidencePartitionResultSchema`, `PaymentEventSchema`, `PaymentAttributionResultSchema`.
+
+
+22. PRIVACY / PII HANDLING
+  - Stateless: Zero database persistence, zero account creation, zero server-side file storage.
+  - No Credentials: Operates completely without live UAN passwords or government portal logins.
+  - Document Sanitization: `maskSensitivePII()` sanitizes high-risk identifiers in dossiers.
+
+
+23. ERROR / REFUSAL BEHAVIOR
+  - Insufficient Evidence: Refuses to guess on vague records; outputs honest `UNKNOWN` with missing item list.
+  - Irreconcilable Contradictions: Refuses to force false clarity; flags `TERMINAL_CONTRADICTION`.
+  - Service Availability: Gracefully informs users if document analysis is temporarily unavailable.
+
+
+24. BILINGUAL SUPPORT
+  - Languages: English (`en`) and Hindi (`hi`).
+  - Architecture: Centralized dictionary in `lib/i18n.ts` covering navigation, hero, scenarios,
+    loading states, 4-question results, diagnostic guidance, timing notices, matrix, and dossier.
+  - Quoted Evidence Integrity: Original evidence text is preserved verbatim without artificial machine translation.
+
+
+25. TESTING & QUALITY GATES
+  - Framework: Vitest 2.1.9 + Playwright 1.49.1.
+  - Test Suites (8 files, 106 unit/integration tests, 5 E2E browser tests):
+    1. `tests/reconcileClaim.test.ts` (29 tests): Deterministic reconciliation, chronology, state precedence.
+    2. `tests/rejections.test.ts` (24 tests): 12 rejection categories, fallback, resolution guidance.
+    3. `tests/formPartition.test.ts` (10 tests): Multi-claim separation, form extraction, unlinked artifacts.
+    4. `tests/attribution.test.ts` (8 tests): Multi-signal payment matching, candidate & conflict states.
+    5. `tests/dossierModel.test.ts` (8 tests): Matrix generation, dossier data mapping, PII masking.
+    6. `tests/productization-guard.test.ts` (20 tests): Scans all 20 frontend files for 0 forbidden terms.
+    7. `tests/dossierGenerator.test.ts` (5 tests): PDF 1.4 structure, headers, determinism, sanitization.
+    8. `tests/extractEvidence.test.ts` (2 tests): AI extraction error handling and configuration guards.
+    9. `e2e/claimclarity.spec.ts` (5 browser tests): Full user flows, vague refusal, conflict, PDF download, and 0 forbidden terms on `/` and `/architecture`.
+
+
+26. CI PIPELINE
+  - Workflow: `.github/workflows/ci.yml`
+  - Automated Steps:
+    1. Checkout & Node 20 setup
+    2. `npm ci`
+    3. `npm run typecheck` (`tsc --noEmit`)
+    4. `npm run lint` (`next lint`)
+    5. `npm test` (`vitest run` including Productization Guard)
+    6. `npm run build` (`next build`)
+    7. `npx playwright test e2e/claimclarity.spec.ts`
+
+
+27. SAMPLE / SYNTHETIC SCENARIOS
+  - Component: `lib/data/sampleClaims.ts`
+  - Scenarios:
+    * Scenario 1 (Case A): Asynchronous portal latency (Settled/Credited supersedes older Under Process).
+    * Scenario 2 (Case B): Passbook payment verified ahead of lagging SMS update.
+    * Scenario 3 (Case C): Vague evidence floor refusal (Missing claim ID, dates, and conclusive status).
+    * Scenario 4 (Case Conflict): Adversarial terminal contradiction (Official rejection vs bank credit).
+
+
+28. KNOWN LIMITATIONS
+  - Lack of Live EPFO Server Access: Operates exclusively on user-supplied records; cannot query live government databases.
+  - Ambiguous Bank Narrations: Bank credits with truncated or missing claim IDs remain as `CANDIDATE` or `UNATTRIBUTED`.
+  - PDF Font Character Metrics: The lightweight pure TypeScript PDF engine maps non-Latin Unicode characters (such as Devnagari glyphs) to clean Roman transliterations and standard Type-1 font metrics to guarantee 100% crash-free, zero-dependency PDF generation. Full native Devnagari text is supported throughout the web UI.
+
+
+29. SECURITY / TRUST BOUNDARIES
+  - No Secret Leakage: API keys and environment variables (`GEMINI_API_KEY`) remain strictly backend-only.
+  - Zero Third-Party Uploads: Evidence and PDFs are processed strictly within the local application runtime without third-party document APIs.
+  - Input Validation: Strict Zod schemas guard against payload tampering and injection attacks.
+
+
+30. FILE / DIRECTORY MAP
+  ClaimClarity/
+  ├── .github/
+  │   └── workflows/
+  │       └── ci.yml                         [CI Pipeline & Quality Gate]
+  ├── app/
+  │   ├── api/
+  │   │   ├── analyze/
+  │   │   │   └── route.ts                  [Evidence analysis API]
+  │   │   └── dossier/
+  │   │       └── route.ts                  [Stateless PDF dossier generator API]
+  │   ├── architecture/
+  │   │   └── page.tsx                      [Technical architecture & pipeline documentation]
+  │   ├── globals.css                       [Public utility styling & design tokens]
+  │   ├── layout.tsx                        [Root layout & metadata]
+  │   └── page.tsx                          [Primary citizen application entry point]
+  ├── components/
+  │   ├── DossierDownloadCard.tsx           [PDF dossier download card & legal notice]
+  │   ├── EvidenceLedger.tsx                [Chronological evidence timeline]
+  │   ├── EvidenceReview.tsx                [Pre-analysis evidence confirmation]
+  │   ├── EvidenceUploader.tsx              [File & text ingestion component]
+  │   ├── ExampleScenarios.tsx              [Sample claim situation cards]
+  │   ├── Footer.tsx                        [Civic utility footer & disclaimers]
+  │   ├── Header.tsx                        [Top navigation & language toggle]
+  │   ├── LandingHero.tsx                   [Headline & value proposition]
+  │   ├── LoadingState.tsx                  [Progressive loading state indicators]
+  │   ├── RejectionDiagnosticView.tsx       [Diagnostic classification & action card]
+  │   ├── ResultCard.tsx                    [Master 4-question result shell]
+  │   ├── VerificationMatrix.tsx            [Check-by-check verification matrix]
+  │   └── index.ts                          [Component barrel exports]
+  ├── lib/
+  │   ├── ai/
+  │   │   ├── errors.ts                     [AI extraction error classes]
+  │   │   └── extractEvidence.ts            [Multimodal Gemini extraction layer]
+  │   ├── config/
+  │   │   └── timings.ts                    [Centralized service timing benchmarks]
+  │   ├── data/
+  │   │   └── sampleClaims.ts               [Pre-structured synthetic sample cases]
+  │   ├── documents/
+  │   │   ├── dossierGenerator.ts           [PDF dossier assembler]
+  │   │   ├── dossierModel.ts               [Dossier view model & PII sanitizer]
+  │   │   └── pdfEngine.ts                  [Pure TypeScript PDF 1.4 engine]
+  │   ├── entity/
+  │   │   └── formPartition.ts              [Claim & form context partitioner]
+  │   ├── reconciliation/
+  │   │   ├── attribution.ts                [Payment attribution engine]
+  │   │   ├── reconcileClaim.ts             [Deterministic reconciliation engine]
+  │   │   └── rejections.ts                 [12-category rejection taxonomy]
+  │   ├── schemas/
+  │   │   └── index.ts                      [Master Zod schemas & TypeScript types]
+  │   ├── i18n.ts                           [Bilingual dictionary (EN / HI)]
+  │   └── uiLabels.ts                       [UI status & source formatters]
+  ├── tests/
+  │   ├── attribution.test.ts               [Payment attribution tests]
+  │   ├── dossierGenerator.test.ts          [PDF engine & integrity tests]
+  │   ├── dossierModel.test.ts              [Dossier data model & PII tests]
+  │   ├── extractEvidence.test.ts           [AI extraction unit tests]
+  │   ├── formPartition.test.ts             [Multi-claim partition tests]
+  │   ├── productization-guard.test.ts      [Frontend copy sanitization guard]
+  │   ├── reconcileClaim.test.ts            [Deterministic engine unit tests]
+  │   └── rejections.test.ts                [Rejection intelligence tests]
+  ├── e2e/
+  │   ├── claimclarity.spec.ts              [Playwright E2E browser test suite]
+  │   └── public-production.spec.ts         [Legacy deployment test suite]
+  ├── package.json                          [Project dependencies & scripts]
+  ├── playwright.config.ts                  [Playwright test configuration]
+  ├── Summary.txt                           [Master implementation summary]
+  └── README.md                             [Project documentation & overview]
+
+
+31. IMPORTANT DESIGN INVARIANTS
+  1. AI extracts facts; deterministic code makes final decisions.
+  2. Same member != Same claim context.
+  3. Form type != Claim identity.
+  4. Unresolved evidence stays unresolved.
+  5. Conflicting identifiers stay conflicted.
+  6. Bank payment exists != Bank payment belongs to this claim.
+  7. Amount match alone != Payment attribution.
+  8. Timing proximity alone != Payment attribution.
+  9. Sender label alone != Claim ownership.
+  10. Unattributed payment != CREDITED state.
+  11. Candidate payment != Automatic CREDITED state.
+  12. Conflicted payment != CREDITED state.
+  13. Historical rejection from one claim must never contaminate another claim.
+  14. 20-day Citizen Charter benchmark is informational, not a legal violation.
+  15. ClaimClarity diagnostic category is an evidence assessment, not an official EPFO rejection code.
+  16. ClaimClarity Evidence Dossier is an independent aid, not an official EPFO or EPFiGMS submission.
+  17. Frontend must not expose Gemini/model/provider/prototype/MVP implementation details.
+  18. The system is stateless and stores zero citizen data.
+
+
+32. FINAL PROJECT STATUS
+================================================================================
+FINAL STATUS:
+
+ClaimClarity V2 implementation cycle:
+COMPLETE
+
+Packages:
+Package 1 (Frontend Productization)          COMPLETE / FROZEN
+Package 1.5 (CI / Merge Quality Gate)        COMPLETE / FROZEN
+Package 2 (Component Decomposition)          COMPLETE / FROZEN
+Package 3 (Rejection & Timing Intelligence)  COMPLETE / FROZEN
+Package 4 (Payment Attribution & Partition)  COMPLETE / FROZEN
+Package 5 (Verification Matrix & Dossier)    COMPLETE / FROZEN
+
+Package 6:
+NONE (Final Package Sequence Complete)
+
+Final release / readiness audit:
+PASSED WITH DOCUMENTED LIMITATIONS
+================================================================================

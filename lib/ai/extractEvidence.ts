@@ -33,7 +33,7 @@ function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     promise,
     new Promise<T>((_, reject) =>
       setTimeout(
-        () => reject(new EvidenceExtractionError("TIMEOUT", "Gemini took too long to analyze this evidence. Please try again.")),
+        () => reject(new EvidenceExtractionError("TIMEOUT", "Analysis took longer than expected. Please check your connection and try again.")),
         ms
       )
     )
@@ -69,19 +69,19 @@ export async function extractEvidence(artifacts: Artifact[]): Promise<Artifact[]
     );
 
     if (!response.text?.trim()) {
-      throw new EvidenceExtractionError("MALFORMED", "Gemini returned no usable evidence extraction. Please try again.");
+      throw new EvidenceExtractionError("MALFORMED", "We could not clearly read the provided records. Please try a clearer screenshot or paste the text directly.");
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(response.text);
     } catch {
-      throw new EvidenceExtractionError("MALFORMED", "Gemini returned an unreadable evidence extraction. Please try again.");
+      throw new EvidenceExtractionError("MALFORMED", "We could not clearly read the provided records. Please try a clearer screenshot or paste the text directly.");
     }
 
     const validated = ArtifactSchema.array().safeParse((parsed as { artifacts?: unknown }).artifacts);
     if (!validated.success) {
-      throw new EvidenceExtractionError("MALFORMED", "Gemini returned evidence in an unexpected format. Please try again.");
+      throw new EvidenceExtractionError("MALFORMED", "We could not clearly read the provided records. Please try a clearer screenshot or paste the text directly.");
     }
 
     return validated.data.map((artifact, index) => ({
@@ -95,6 +95,6 @@ export async function extractEvidence(artifacts: Artifact[]): Promise<Artifact[]
     if (error instanceof EvidenceExtractionError) throw error;
     const status = typeof error === "object" && error && "status" in error ? Number((error as { status: unknown }).status) : 0;
     if (status === 429) throw new EvidenceExtractionError("RATE_LIMIT", "Analysis is temporarily busy. Please try again in a moment.");
-    throw new EvidenceExtractionError("PROVIDER", "Gemini could not analyze this evidence right now. Please try again.");
+    throw new EvidenceExtractionError("PROVIDER", "Document analysis service is temporarily unavailable. Please try again in a moment.");
   }
 }
