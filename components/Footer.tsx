@@ -1,11 +1,18 @@
 "use client";
 
 import React from "react";
+import { translations, type Language } from "@/lib/i18n";
 
-export function Footer() {
+export interface FooterProps {
+  lang?: Language;
+}
+
+export function Footer({ lang = "en" }: FooterProps) {
+  const t = translations[lang];
   return (
     <footer className="app-footer">
-      ClaimClarity is an independent civic utility for claim verification. Not affiliated with or endorsed by EPFO. We do not access or modify government systems.
+      {t.footer.disclaimer}
     </footer>
   );
 }
+

@@ -186,7 +186,7 @@ export default function Home() {
       )}
 
       {/* FOOTER DISCLOSURES */}
-      <Footer />
+      <Footer lang={lang} />
     </main>
   );
 }

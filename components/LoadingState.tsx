@@ -13,8 +13,8 @@ export function LoadingState({ lang, step }: LoadingStateProps) {
 
   return (
     <section className="loading-box" aria-live="polite">
-      <p className="eyebrow">VERIFYING YOUR RECORDS</p>
-      <h1 style={{ fontSize: "26px", margin: "8px 0" }}>Checking claim records</h1>
+      <p className="eyebrow">{t.loading.eyebrow}</p>
+      <h1 style={{ fontSize: "26px", margin: "8px 0" }}>{t.loading.title}</h1>
       <p className="subhead" style={{ margin: 0 }}>{t.loading.caption}</p>
 
       <ul className="loading-steps">
@@ -35,3 +35,4 @@ export function LoadingState({ lang, step }: LoadingStateProps) {
     </section>
   );
 }
+

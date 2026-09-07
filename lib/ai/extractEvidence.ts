@@ -12,20 +12,24 @@ Assign extractionConfidence as "high", "medium", or "low" based on how legible a
 
 Return strict JSON with an "artifacts" array. Each artifact must strictly match this structure:
 {
-  "id": string,
-  "source": "new_tracker" | "old_tracker" | "passbook" | "sms" | "bank" | "other",
-  "channelDetail": string | null,
-  "text": string,
-  "date": string | null (ISO format YYYY-MM-DD if date is explicit, otherwise null),
-  "status": string | null (exact status phrase in the evidence),
-  "claimId": string | null,
-  "claimType": string | null,
-  "amount": string | null,
-  "ambiguity": string | null,
-  "extractionConfidence": "high" | "medium" | "low",
-  "fileName": string | null,
-  "mimeType": string | null,
-  "dataBase64": null
+  "artifacts": [
+    {
+      "id": string,
+      "source": "new_tracker" | "old_tracker" | "passbook" | "sms" | "bank" | "other",
+      "channelDetail": string | null,
+      "text": string,
+      "date": string | null (ISO format YYYY-MM-DD if date is explicit, otherwise null),
+      "status": string | null (exact status phrase in the evidence),
+      "claimId": string | null,
+      "claimType": string | null,
+      "amount": string | null,
+      "ambiguity": string | null,
+      "extractionConfidence": "high" | "medium" | "low",
+      "fileName": string | null,
+      "mimeType": string | null,
+      "dataBase64": null
+    }
+  ]
 }`;
 
 function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {

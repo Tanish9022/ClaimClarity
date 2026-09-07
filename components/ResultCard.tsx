@@ -2,7 +2,7 @@
 
 import React from "react";
 import type { ReconciliationResult } from "@/lib/schemas";
-import { translations, type Language } from "@/lib/i18n";
+import { translations, translateEngineText, type Language } from "@/lib/i18n";
 import { stateDisplay } from "@/lib/uiLabels";
 import { EvidenceLedger } from "./EvidenceLedger";
 import { RejectionDiagnosticView } from "./RejectionDiagnosticView";
@@ -72,7 +72,7 @@ export function ResultCard({
             ? t.result.conflict.subtext
             : isUnknown
             ? t.result.unknown.subtext
-            : result.reason}
+            : translateEngineText(result.reason, lang)}
         </p>
       </div>
 
@@ -81,18 +81,18 @@ export function ResultCard({
         <h2>{t.result.whyHeading}</h2>
         <p className="why-highlight">
           {isTerminalConflict
-            ? "Your records contain two incompatible terminal outcomes: one official record indicates rejection, while another subsequent record indicates credit."
-            : result.reconciliationTrace.winningStateRationale}
+            ? t.result.conflict.whyHighlight
+            : translateEngineText(result.reconciliationTrace.winningStateRationale, lang)}
         </p>
 
         {result.conflicts.length > 0 && !isTerminalConflict && (
           <div className="conflict-callout-list">
             <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--amber)" }}>
-              WHY RECORDS LOOK CONFUSING:
+              {t.result.whyConfusingHeader}
             </span>
             <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
               {result.conflicts.map((c, i) => (
-                <li key={i}>{c.message}</li>
+                <li key={i}>{translateEngineText(c.message, lang)}</li>
               ))}
             </ul>
           </div>
@@ -107,7 +107,7 @@ export function ResultCard({
               {t.result.conflict.whatWeKnow}
             </h3>
             <p style={{ margin: 0, fontSize: "15px", color: "var(--ink)" }}>
-              A financial credit entry referencing this claim is recorded in the evidence.
+              {t.result.conflict.whatWeKnowText}
             </p>
           </div>
           <div>
@@ -115,7 +115,7 @@ export function ResultCard({
               {t.result.conflict.whatWeCannotConfirm}
             </h3>
             <p style={{ margin: 0, fontSize: "15px", color: "var(--ink-secondary)" }}>
-              We cannot confirm whether that credit resolves the same claim as the official rejection notice without regional office verification.
+              {t.result.conflict.whatWeCannotConfirmText}
             </p>
           </div>
         </div>
@@ -128,9 +128,9 @@ export function ResultCard({
             {t.result.unknown.whatsMissing}
           </h2>
           <ul style={{ margin: "6px 0 0", paddingLeft: "18px", color: "var(--ink)", lineHeight: 1.6 }}>
-            <li><strong>✓ Claim ID:</strong> No explicit claim number found</li>
-            <li><strong>✓ Date:</strong> No verifiable timestamp on the notification</li>
-            <li><strong>✓ Clear outcome:</strong> Message does not state whether claim was approved or rejected</li>
+            <li>{t.result.unknown.missingClaimId}</li>
+            <li>{t.result.unknown.missingDate}</li>
+            <li>{t.result.unknown.missingOutcome}</li>
           </ul>
         </div>
       )}
@@ -144,7 +144,7 @@ export function ResultCard({
       {result.timingAssessment?.timingNotice && !isTerminalConflict && (
         <div className="result-section" style={{ borderLeft: "4px solid var(--ink-secondary)", background: "rgba(0,0,0,0.02)" }}>
           <span className="eyebrow" style={{ margin: "0 0 4px", fontSize: "11px" }}>
-            {t.result.timing?.eyebrow || "TIMELINE & SERVICE BENCHMARK"}
+            {t.result.timing?.eyebrow}
           </span>
           <p style={{ margin: 0, fontSize: "14px", color: "var(--ink)" }}>
             {result.timingAssessment.timingNotice[lang]}
@@ -156,7 +156,7 @@ export function ResultCard({
       {result.partitionResult && (result.partitionResult.hasMultiClaim || result.partitionResult.hasMultiForm || result.partitionResult.unresolvedArtifactIds.length > 0) && (
         <div className="result-section" style={{ borderLeft: "4px solid var(--ink-secondary)", background: "rgba(0,0,0,0.02)" }}>
           <span className="eyebrow" style={{ margin: "0 0 4px", fontSize: "11px" }}>
-            {t.result.partition?.eyebrow || "CLAIM CONTEXT & RECORD SEPARATION"}
+            {t.result.partition?.eyebrow}
           </span>
           <p style={{ margin: 0, fontSize: "14px", color: "var(--ink)", fontWeight: 600 }}>
             {result.partitionResult.partitionSummary[lang]}
@@ -186,7 +186,7 @@ export function ResultCard({
       {result.paymentAttribution && result.paymentAttribution.payments.length > 0 && (
         <div className="result-section" style={{ borderLeft: "4px solid var(--green)", background: "rgba(0,0,0,0.02)" }}>
           <span className="eyebrow" style={{ margin: "0 0 4px", fontSize: "11px" }}>
-            {t.result.attribution?.eyebrow || "PAYMENT VERIFICATION & LINKAGE"}
+            {t.result.attribution?.eyebrow}
           </span>
           {result.paymentAttribution.payments.map((p, idx) => (
             <div key={idx} style={{ marginTop: idx > 0 ? "8px" : 0 }}>
@@ -208,15 +208,15 @@ export function ResultCard({
                   }}
                 >
                   {p.attributionStatus === "ATTRIBUTED"
-                    ? "Verified Link"
+                    ? t.result.attribution.badgeVerified
                     : p.attributionStatus === "CANDIDATE"
-                    ? "Candidate Match"
+                    ? t.result.attribution.badgeCandidate
                     : p.attributionStatus === "CONFLICTED"
-                    ? "Conflicted"
-                    : "Unlinked Payment"}
+                    ? t.result.attribution.badgeConflicted
+                    : t.result.attribution.badgeUnlinked}
                 </span>
                 <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>
-                  {p.amount ? `${p.amount} observed` : "Credit entry observed"}
+                  {p.amount ? `${p.amount} ${t.result.attribution.observed}` : t.result.attribution.creditObserved}
                   {p.date ? ` on ${p.date}` : ""}
                 </span>
               </div>
@@ -240,7 +240,7 @@ export function ResultCard({
           {t.result.whatShouldIDo}
         </h2>
         <p style={{ margin: 0, fontSize: "15px", lineHeight: 1.5 }}>
-          {isTerminalConflict ? t.result.conflict.action : result.recommendedAction}
+          {isTerminalConflict ? t.result.conflict.action : translateEngineText(result.recommendedAction, lang)}
         </p>
       </div>
 
@@ -250,7 +250,9 @@ export function ResultCard({
           <h3 style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: 800, color: "var(--amber)", letterSpacing: "0.02em" }}>
             {t.result.dontDoThisYet}
           </h3>
-          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.5 }}>{result.doNotDo}</p>
+          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.5 }}>
+            {translateEngineText(result.doNotDo, lang)}
+          </p>
         </div>
       )}
 
@@ -261,9 +263,13 @@ export function ResultCard({
       {competingSuperseded && !isTerminalConflict && (
         <div className="competing-state-box">
           <h3 style={{ margin: "0 0 8px", fontSize: "13px", fontWeight: 800, color: "var(--green)", letterSpacing: "0.03em" }}>
-            WHY {result.finalState} INSTEAD OF {competingSuperseded.state}?
+            {lang === "hi"
+              ? `${stateDisplay[result.finalState]?.hi || result.finalState} क्यों, ${stateDisplay[competingSuperseded.state]?.hi || competingSuperseded.state} क्यों नहीं?`
+              : `WHY ${result.finalState} INSTEAD OF ${competingSuperseded.state}?`}
           </h3>
-          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.5 }}>{competingSuperseded.reasonNotChosen}</p>
+          <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.5 }}>
+            {translateEngineText(competingSuperseded.reasonNotChosen, lang)}
+          </p>
         </div>
       )}
 
@@ -281,12 +287,12 @@ export function ResultCard({
         {details && (
           <div className="trace-panel">
             <div className="trace-checks">
-              <span className="trace-check-item">Identity verified ✓</span>
-              <span className="trace-check-item">Chronological order ✓</span>
-              <span className="trace-check-item">Outcome supported ✓</span>
-              <span className="trace-check-item">Earlier record superseded ✓</span>
+              <span className="trace-check-item">{t.result.traceChecks.identity}</span>
+              <span className="trace-check-item">{t.result.traceChecks.chronology}</span>
+              <span className="trace-check-item">{t.result.traceChecks.outcome}</span>
+              <span className="trace-check-item">{t.result.traceChecks.superseded}</span>
               <span className="trace-check-item">
-                {isTerminalConflict ? "Incompatible outcomes flagged ⚠" : "No unresolved contradiction ✓"}
+                {isTerminalConflict ? t.result.traceChecks.conflictFlagged : t.result.traceChecks.noConflict}
               </span>
             </div>
             <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
@@ -315,3 +321,4 @@ export function ResultCard({
     </section>
   );
 }
+

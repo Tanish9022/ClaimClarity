@@ -85,19 +85,19 @@ export function VerificationMatrix({ lang, result }: VerificationMatrixProps) {
       {/* SUMMARY BADGES */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
         <span style={{ fontSize: "12px", padding: "3px 8px", borderRadius: "4px", background: "rgba(0,0,0,0.05)", border: "1px solid var(--border)" }}>
-          <strong>Total Checks:</strong> {matrix.totalChecks}
+          <strong>{t.result.matrix.totalChecks}</strong> {matrix.totalChecks}
         </span>
         <span style={{ fontSize: "12px", padding: "3px 8px", borderRadius: "4px", background: "rgba(16, 185, 129, 0.1)", color: "var(--green)", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
-          <strong>Verified / Supported:</strong> {matrix.verifiedCount}
+          <strong>{t.result.matrix.verifiedCount}</strong> {matrix.verifiedCount}
         </span>
         {matrix.conflictsCount > 0 && (
           <span style={{ fontSize: "12px", padding: "3px 8px", borderRadius: "4px", background: "rgba(245, 158, 11, 0.1)", color: "var(--amber)", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
-            <strong>Conflicts:</strong> {matrix.conflictsCount}
+            <strong>{t.result.matrix.conflictsCount}</strong> {matrix.conflictsCount}
           </span>
         )}
         {matrix.unresolvedCount > 0 && (
           <span style={{ fontSize: "12px", padding: "3px 8px", borderRadius: "4px", background: "rgba(100, 116, 139, 0.1)", color: "var(--ink-secondary)", border: "1px solid var(--border)" }}>
-            <strong>Unresolved / Review:</strong> {matrix.unresolvedCount}
+            <strong>{t.result.matrix.unresolvedCount}</strong> {matrix.unresolvedCount}
           </span>
         )}
       </div>

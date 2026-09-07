@@ -4,8 +4,11 @@ import { extractEvidence, isGeminiConfigured } from "@/lib/ai/extractEvidence";
 import { sampleClaims } from "@/lib/data/sampleClaims";
 import { reconcileClaim } from "@/lib/reconciliation/reconcileClaim";
 import { AnalyzeRequestSchema } from "@/lib/schemas";
+
 export const runtime = "nodejs";
+
 const jsonError = (error: string, status: number) => NextResponse.json({ error }, { status });
+
 export async function POST(request: Request) {
   try {
     const parsed = AnalyzeRequestSchema.safeParse(await request.json() as unknown);

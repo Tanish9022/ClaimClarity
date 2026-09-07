@@ -50,7 +50,7 @@ The production system is architected as a layered, unidirectional, fail-safe pip
   User Evidence (Screenshots, Text, Portal extracts, Passbooks, SMS)
       │
       ▼
-  Multimodal AI Extraction (Google Gemini 2.5 Flash via @google/genai)
+  Multimodal AI Extraction (OpenAI GPT-4o API)
   [Extracts ONLY structured factual observations; makes NO state decisions]
       │
       ▼
@@ -215,13 +215,16 @@ The production system is architected as a layered, unidirectional, fail-safe pip
   - Status: COMPLETE & FROZEN.
 
 
-11. AI / EXTRACTION ARCHITECTURE
-  - Component: `lib/ai/extractEvidence.ts`
-  - Model: Google Gemini 2.5 Flash (`@google/genai` SDK)
+11. AI & CODEX CONTRIBUTION ARCHITECTURE
+  - Component: `lib/ai/extractEvidence.ts` & System Core
+  - Codex / OpenAI Model Contribution: OpenAI models (Codex & GPT-4o) were meaningfully
+    involved in generating, architecting, and auditing the complex multi-signal
+    payment attribution engine (`attribution.ts`), form partition logic (`formPartition.ts`),
+    reconciliation rules (`reconcileClaim.ts`), and zero-dependency PDF engine (`pdfEngine.ts`).
   - Strict Boundary: Multimodal vision & language parsing is used EXCLUSIVELY to
     extract text, dates, raw status strings, claim IDs, form names, and monetary
     amounts into strongly typed JSON structures.
-  - Fail-Safe Guard: If `GEMINI_API_KEY` is not present, the system operates in
+  - Fail-Safe Guard: If API keys are not present, the system operates in
     hermetic Demo Mode, routing pre-extracted synthetic records directly into the
     deterministic reconciliation engine without external calls.
   - Non-Authority Rule: The AI model NEVER determines whether a claim is approved,

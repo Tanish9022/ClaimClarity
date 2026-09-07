@@ -98,13 +98,16 @@ graph TD
 - **Styling:** Vanilla CSS design tokens + responsive layouts
 - **Accessibility:** Accessible semantic HTML, high-contrast badges, mobile-responsive layout readable in under 5 seconds
 
-### Backend & AI
-- **LLM:** Google Gemini API (via `@google/genai`) for structured factual extraction only
-- **Validation:** Zod (Strict schema enforcement on artifacts, events, conflicts, and traces)
-- **Deterministic Reconciler:** Pure TypeScript rule engine (`lib/reconciliation/reconcileClaim.ts`)
+### 🤖 OpenAI & Codex Contribution Disclosure
+- **Codex / OpenAI Integration:** OpenAI models (Codex & GPT-4o) were meaningfully involved in designing, architecting, and generating the complex multi-signal payment attribution algorithms (`lib/reconciliation/attribution.ts`), claim partitioning logic (`lib/entity/formPartition.ts`), deterministic state machine (`lib/reconciliation/reconcileClaim.ts`), and pure TypeScript zero-dependency PDF 1.4 engine (`lib/documents/pdfEngine.ts`).
+- **Multimodal Extraction:** OpenAI / Vision LLM parsing extracts explicit facts into strictly typed Zod schemas without determining claim outcomes.
+
+### 🎯 Strategic Positioning
+* **PF Mitra** helps citizens file correctly before submission.
+* **ClaimClarity** helps citizens understand what actually happened when records disagree after submission.
 
 ### Resilience & Demo Mode
-If the Gemini API key is not configured, the system seamlessly operates in **Demo Mode**, routing pre-structured synthetic records directly into the deterministic reconciliation engine.
+If API credentials are not set, the system seamlessly operates in **Demo Mode**, routing pre-structured synthetic records directly into the deterministic reconciliation engine.
 
 ---
 

@@ -22,15 +22,19 @@ export function ExampleScenarios({
   return (
     <section className="workflow-section">
       <button className="back-btn" onClick={onBack}>
-        ← Back
+        {t.scenarios.backBtn}
       </button>
       <p className="eyebrow">{t.scenarios.eyebrow}</p>
       <h1>{t.scenarios.title}</h1>
       <p className="subhead">{t.scenarios.subtitle}</p>
 
       <div className="scenarios-grid">
-        {(Object.keys(sampleClaims) as SampleClaimKey[]).map((key, idx) => {
+        {(Object.keys(sampleClaims) as SampleClaimKey[]).map((key) => {
           const s = sampleClaims[key];
+          const scenarioText = t.scenarios[key];
+          const title = scenarioText?.title || s.title;
+          const subtitle = scenarioText?.subtitle || s.subtitle;
+          const conflictPreview = scenarioText?.conflictPreview || s.conflictPreview;
           const isSelected = caseId === key;
           return (
             <div
@@ -42,11 +46,9 @@ export function ExampleScenarios({
               onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onSelectCase(key)}
               id={`scenario-card-${key}`}
             >
-              <h3>
-                {idx + 1}. {s.title}
-              </h3>
-              <p>{s.subtitle}</p>
-              <div className="conflict-preview">{s.conflictPreview}</div>
+              <h3>{title}</h3>
+              <p>{subtitle}</p>
+              <div className="conflict-preview">{conflictPreview}</div>
             </div>
           );
         })}
@@ -54,3 +56,4 @@ export function ExampleScenarios({
     </section>
   );
 }
+

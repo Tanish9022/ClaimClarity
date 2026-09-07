@@ -26,13 +26,14 @@ export function EvidenceReview({
 }: EvidenceReviewProps) {
   const t = translations[lang];
   const claim = sampleClaims[caseId];
+  const scenarioTitle = t.scenarios[caseId]?.title || claim.title;
 
   return (
     <section className="workflow-section">
       <button className="back-btn" onClick={onBack}>
-        ← Back to scenarios
+        {t.review.backBtn}
       </button>
-      <p className="eyebrow">{claim.title}</p>
+      <p className="eyebrow">{scenarioTitle}</p>
       <h1>{t.review.header}</h1>
       <p className="subhead">{t.review.subtext}</p>
 
@@ -41,14 +42,14 @@ export function EvidenceReview({
           <article className="evidence-row-card" key={a.id}>
             <div className="evidence-left">
               <b>{sourceLabel[a.source]?.[lang] || a.source}</b>
-              <small>{a.date || "Undated observation"}</small>
+              <small>{a.date || t.review.undated}</small>
               {a.claimId && <span className="claim-id-tag">{a.claimId}</span>}
               <p style={{ margin: "6px 0 0", fontSize: "13.5px", color: "var(--ink-secondary)" }}>
                 {a.text}
               </p>
             </div>
             <div className="evidence-right">
-              <strong>{a.status || "Unstated status"}</strong>
+              <strong>{a.status || t.review.unstated}</strong>
               {a.amount && <span className="amount-highlight">{a.amount}</span>}
             </div>
           </article>
@@ -94,3 +95,4 @@ export function EvidenceReview({
     </section>
   );
 }
+

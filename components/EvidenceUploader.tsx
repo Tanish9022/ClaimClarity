@@ -32,15 +32,15 @@ export function EvidenceUploader({
   return (
     <section className="workflow-section">
       <button className="back-btn" onClick={onBack}>
-        ← Back
+        {t.custom.backBtn}
       </button>
       <p className="eyebrow">{t.review.header}</p>
       <h1>{t.custom.title}</h1>
       <p className="subhead">
-        Bring together multiple records to compare them.
+        {t.custom.subtitleText}
         <br />
         <span style={{ fontSize: "12.5px", color: "var(--ink-muted)" }}>
-          Please crop or blur unnecessary personal details such as Aadhaar or bank account numbers before uploading.
+          {t.custom.privacyTip}
         </span>
       </p>
 
@@ -94,7 +94,7 @@ export function EvidenceUploader({
 
       {artifacts.length > 0 && (
         <div style={{ marginBottom: "20px" }}>
-          <b style={{ fontSize: "14px", display: "block", marginBottom: "6px" }}>Added records:</b>
+          <b style={{ fontSize: "14px", display: "block", marginBottom: "6px" }}>{t.custom.addedRecordsLabel}</b>
           <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--ink-secondary)", fontSize: "14px" }}>
             {artifacts.map((a) => (
               <li key={a.id}>{a.fileName || a.text.slice(0, 60) + "…"}</li>
@@ -120,3 +120,4 @@ export function EvidenceUploader({
     </section>
   );
 }
+
