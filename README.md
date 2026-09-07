@@ -28,7 +28,7 @@ After submitting an EPFO claim, a citizen often encounters different and conflic
 When one record says "Under Process", another says "Settled", and an SMS says "Pending", citizens don't know what to trust or whether to file a duplicate claim.
 
 **ClaimClarity** resolves this ambiguity through **Evidence Reconciliation**:
-1. AI (Gemini) extracts explicit facts into a strictly typed evidence model without deciding the final state.
+1. AI (OpenAI API) extracts explicit facts into a strictly typed evidence model without deciding the final state.
 2. A pure TypeScript deterministic engine reconciles identity, chronology, semantics, terminal outcomes, stale observations, and contradictions.
 3. The UI presents the answer first (**ANSWER &rarr; WHY &rarr; PROOF &rarr; ACTION**) with an auditable deterministic trace.
 
@@ -75,7 +75,7 @@ graph TD
     A([Citizen Supplies Evidence]):::citizen --> B[Next.js Frontend Client]:::frontend
     
     subgraph "AI Extraction Layer (Facts Only - No Decision)"
-        B --> |POST /api/analyze| C{Gemini API}:::ai
+        B --> |POST /api/analyze| C{OpenAI API}:::ai
         C --> |Extracts Typed Facts| D[Zod Validation]:::ai
     end
     
@@ -98,9 +98,13 @@ graph TD
 - **Styling:** Vanilla CSS design tokens + responsive layouts
 - **Accessibility:** Accessible semantic HTML, high-contrast badges, mobile-responsive layout readable in under 5 seconds
 
+### Backend & AI Extraction
+- **Multimodal Extraction LLM:** OpenAI API (GPT-4o) for structured factual extraction only
+- **Validation:** Zod (Strict schema enforcement on artifacts, events, conflicts, and traces)
+- **Deterministic Reconciler:** Pure TypeScript rule engine (`lib/reconciliation/reconcileClaim.ts`)
+
 ### 🤖 OpenAI & Codex Contribution Disclosure
 - **Codex / OpenAI Integration:** OpenAI models (Codex & GPT-4o) were meaningfully involved in designing, architecting, and generating the complex multi-signal payment attribution algorithms (`lib/reconciliation/attribution.ts`), claim partitioning logic (`lib/entity/formPartition.ts`), deterministic state machine (`lib/reconciliation/reconcileClaim.ts`), and pure TypeScript zero-dependency PDF 1.4 engine (`lib/documents/pdfEngine.ts`).
-- **Multimodal Extraction:** OpenAI / Vision LLM parsing extracts explicit facts into strictly typed Zod schemas without determining claim outcomes.
 
 ### 🎯 Strategic Positioning
 * **PF Mitra** helps citizens file correctly before submission.
